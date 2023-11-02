@@ -4,10 +4,10 @@
 #include <avr/io.h>
 
 //! Global variables
-unsigned char stunden=12;
-unsigned char minuten=59;
-unsigned char sekunden=45;
-unsigned short millisek=000;
+uint8_t stunden=12;
+uint8_t minuten=59;
+uint8_t sekunden=45;
+uint16_t millisek=000;
 
 /*!
  * \return The milliseconds counter of the current time.
