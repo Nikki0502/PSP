@@ -33,11 +33,9 @@ void helloWorld(void) {
 void displayClock(void) {
   while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
 	uint16_t clockVal=0b0000000000000000;
-	clockVal |= getTimeHours() <<12  ;  // kcuk mal hier
-	clockVal |= getTimeMinutes() << 6:
-	clockVal |=getTimeSeconds() ;
+	clockVal |= ((uint16_t)getTimeHours() <<12)+ ((uint16_t)getTimeMinutes() << 6)+ (uint16_t)getTimeSeconds() ;  // kcuk mal hier
 	setLedBar(clockVal);
-	lcd_writeProgString(PSTR);// Zahlen in das Format HH:MM:SS:mmm transformiert werden
+	lcd_writeString("%02d:%02d:%02d:%03d",getTimeHours(),getTimeMinutes(),getTimeSeconds(),getTimeMilliseconds());// Zahlen in das Format HH:MM:SS:mmm transformiert werden
   }
   while(( os_getInput() & 0b00001000 ) == 0b00001000){};
   showMenu();
