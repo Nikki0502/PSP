@@ -5,6 +5,7 @@
 
 int main(void) {
     os_initInput();
+	initLEDandR2R();
 	uint8_t var = 1;// "Es genügt, das zu startende Unterprogramm im Sourcecode festlegen zu koennen"
 	switch (var){
 		case 1:
