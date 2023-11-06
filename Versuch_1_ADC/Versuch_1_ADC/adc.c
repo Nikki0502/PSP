@@ -58,13 +58,13 @@ uint16_t getAdcValue() {
     return lastCaptured;
 }
 
+
 /*! \brief Returns the size of the buffer which stores voltage values.
  *
  * \return The size of the buffer which stores voltage values.
  */
 uint8_t getBufferSize() {
-#warning IMPLEMENT STH. HERE
-    return 0;
+    return bufferSize;
 }
 
 /*! \brief Returns the current index of the buffer which stores voltage values.
@@ -72,15 +72,22 @@ uint8_t getBufferSize() {
  * \return The current index of the buffer which stores voltage values.
  */
 uint8_t getBufferIndex() {
-#warning IMPLEMENT STH. HERE
-    return 0;
+    return bufferIndex;
 }
 
 /*! \brief Stores the last captured voltage.
  *
  */
 void storeVoltage(void){
-#warning IMPLEMENT STH. HERE
+  if(getBufferSize() == 0){
+    bufferSize = 100;
+	bufferIndex = 0;
+	bufferStart = malloc(bufferSize * sizeof(uint16_t));  
+  }
+  if(bufferSize-1>bufferIndex){
+	*(bufferStart + bufferIndex) = lastCaptured;
+	bufferIndex = bufferIndex + 1;  
+  }
 }
 
 /*! \brief Returns the voltage value with the passed index.
@@ -89,6 +96,8 @@ void storeVoltage(void){
  * \return      The voltage value with index ind.
  */
 uint16_t getStoredVoltage(uint8_t ind) {
-#warning IMPLEMENT STH. HERE
-    return 0;
+	if(ind < bufferSize && ind >=0){
+		uint16_t storedVooltage = *(bufferSize + ind);
+	}
+    return storedVooltage;
 }

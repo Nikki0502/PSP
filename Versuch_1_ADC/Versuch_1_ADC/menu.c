@@ -18,7 +18,7 @@ void helloWorld(void) {
 // Repeat until ESC gets pressed
   while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
 	  lcd_writeString("Hallo Welt!");
-	  //lcd_writeProgString(PSTR"Hallo Welt!")
+	  //lcd_writeProgString(PSTR"Hallo Welt!");
 	  _delay_ms(500);
 	  lcd_clear();
 	  _delay_ms(500);
@@ -33,8 +33,9 @@ void helloWorld(void) {
 void displayClock(void) {
   while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
 	uint16_t clockVal=0b0000000000000000;
-	clockVal |= ((uint16_t)getTimeHours() <<12)+ ((uint16_t)getTimeMinutes() << 6)+ (uint16_t)getTimeSeconds() ;  // kcuk mal hier
+	clockVal |= ((uint16_t)getTimeHours() <<12) | ((uint16_t)getTimeMinutes() << 6) | (uint16_t)getTimeSeconds() ;  // kcuk mal hier
 	setLedBar(clockVal);
+	//FRAGESTUNDE WIE MACHT MAN DAS 
 	lcd_writeString("%02d:%02d:%02d:%03d",getTimeHours(),getTimeMinutes(),getTimeSeconds(),getTimeMilliseconds());// Zahlen in das Format HH:MM:SS:mmm transformiert werden
   }
   while(( os_getInput() & 0b00001000 ) == 0b00001000){};
@@ -45,14 +46,45 @@ void displayClock(void) {
  *  Shows the stored voltage values in the second line of the display.
  */
 void displayVoltageBuffer(uint8_t displayIndex) {
-#warning IMPLEMENT STH. HERE
+	lcd_line2();
+	uint16_t storedVoltage = getStoredVoltage(displayIndex);
+	lcd_writeString("%03d",getBufferIndex());
+	lcd_writeProgString(PSTR("/"));
+	lcd_writeChar(getBufferSize());
+	lcd_writeVoltage(storedVoltage);
 }
 
 /*!
  *  Shows the ADC value on the display and on the led bar.
  */
 void displayAdc(void) {
-#warning IMPLEMENT STH. HERE
+  uint8_t bufferindex = 0;
+  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
+	  lcd_clear();
+	  lcd_writeProgString(PSTR("Voltage:"));
+	  lcd_writeVoltage(getAdcValue());
+	  uint16_t ledValue =0b00000000;
+	  uint16_t adcResult = getAdcValue();
+	  while(adcResult >= 68){
+		  ledValue = ledValue << 1:
+		  ledValue = ledValue + 0b00000010;
+		  adcResult = adcResult -68;
+	  }
+	  setLedBar(ledValue);
+	  if((os_getInput() & 0b00000001) == 0b00000001){
+		  //speichern der Aktuellen Spannung
+		  storeVoltage();
+	  }
+	  if((os_getInput() & 0b00000100)== 0b00000100){
+		  //u
+		  displayVoltageBuffer(bufferindex);
+	  }
+	  if((os_getInput() & 0b00000010)== 0b00000010){
+		  //down
+		 displayVoltageBuffer(bufferindex);
+	  }
+	  _delay_ms(100);
+  }
 }
 
 /*! \brief Starts the passed program

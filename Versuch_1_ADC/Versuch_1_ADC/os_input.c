@@ -21,7 +21,7 @@ Everything that is necessary to get the input from the Buttons in a clean format
 uint8_t os_getInput(void) {
   uint8_t pinstate01 = (~PINC & 0b00000011);
   uint8_t pinstate67 = (~PINC & 0b11000000)>>4;
-  uint8_t pinstate = pinstate01 + pinstate67;
+  uint8_t pinstate = pinstate01 | pinstate67; //00001100 + 00000011 = 00001111
   return pinstate;
 }
 

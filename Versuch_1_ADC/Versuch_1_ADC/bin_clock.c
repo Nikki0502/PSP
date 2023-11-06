@@ -65,20 +65,20 @@ void initClock(void) {
  *  Updates the global variables to get a valid 12h-time
  */
 void updateClock(void){
-  if(millisek>=1000){//groeßer gleich stuff fuer eventuelle Fehler idk ob notwendig
-	  millisek=millisek-1000;
+  if(millisek=1000){//groeßer gleich stuff fuer eventuelle Fehler idk ob notwendig
+	  millisek=0;
 	  sekunden=sekunden+1;
   }
-  if(sekunden>=60){
-	  sekunden=sekunden-60;
+  if(sekunden=60){
+	  sekunden=0;
 	  minuten=minuten+1;
   }
-  if(minuten>=60){
-	  minuten=minuten-60;
+  if(minuten=60){
+	  minuten=0;
 	  stunden=stunden+1;
   }
-  if(stunden>=13){
-	  stunden=stunden-12;
+  if(stunden=13){
+	  stunden=1;
   }
 }
 
