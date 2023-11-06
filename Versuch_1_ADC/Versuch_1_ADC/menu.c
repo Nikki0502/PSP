@@ -15,72 +15,91 @@
  *  Shows the string 'Hello World!' on the display.
  */
 void helloWorld(void) {
-// Repeat until ESC gets pressed
-  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
-	  lcd_writeString("Hallo Welt!");
-	  //lcd_writeProgString(PSTR"Hallo Welt!");
+  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){// check if ESC is pressed
+	  //lcd_writeString("Hallo Welt!");
+	  lcd_writeProgString(PSTR("Hallo Welt!"));
 	  _delay_ms(500);
 	  lcd_clear();
 	  _delay_ms(500);
   }
-  while(( os_getInput() & 0b00001000 ) == 0b00001000){};//Sobald der ESC-Button gedrückt und losgelassen wurde
-  showMenu();//soll ins Hauptmenü zurückgekehrt werden
+  while(( os_getInput() & 0b00001000 ) == 0b00001000){};// checks if ESC is no longer pressed 
+  showMenu();// return to main menu
 }
 
 /*!
  *  Shows the clock on the display and a binary clock on the led bar.
  */
 void displayClock(void) {
-  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
+  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){// check if ESC is pressed
 	uint16_t clockVal=0b0000000000000000;
-	clockVal |= ((uint16_t)getTimeHours() <<12) | ((uint16_t)getTimeMinutes() << 6) | (uint16_t)getTimeSeconds() ;  // kcuk mal hier
+	clockVal |= ((uint16_t)getTimeHours() <<12) | ((uint16_t)getTimeMinutes() << 6) | (uint16_t)getTimeSeconds() ;  // set clockVal to Hour<12 Min<6 Sec
 	setLedBar(clockVal);
 	//FRAGESTUNDE WIE MACHT MAN DAS 
-	lcd_writeString("%02d:%02d:%02d:%03d",getTimeHours(),getTimeMinutes(),getTimeSeconds(),getTimeMilliseconds());// Zahlen in das Format HH:MM:SS:mmm transformiert werden
+	char timeString[12]; // 12 long String 
+	snprintf(timeString, sizeof(timeString), "%02d:%02d:%02d:%03d", getTimeHours(),getTimeMinutes(),getTimeSeconds(),getTimeMilliseconds()); // idk ob das so geht?
+	lcd_writeString(timeString);// prints number in HH:MM:SS:mmm fomrat 
   }
+  // checks if ESC is no longer pressed 
   while(( os_getInput() & 0b00001000 ) == 0b00001000){};
-  showMenu();
+  showMenu();// return to main menu
 }
 
 /*!
  *  Shows the stored voltage values in the second line of the display.
  */
 void displayVoltageBuffer(uint8_t displayIndex) {
+	// set courser to line 2 and erase this line before writing again  
 	lcd_line2();
+	lcd_erase(2);
+	//get the storedVoltage that should be displaed
 	uint16_t storedVoltage = getStoredVoltage(displayIndex);
-	lcd_writeString("%03d",getBufferIndex());
+	//display the Voltage in a 54/100 Voltag Format
+	char voltString[3];
+	snprintf(voltString,sizeof(voltString), "%03d",getBufferIndex()+1);
+	lcd_writeString(voltString);
 	lcd_writeProgString(PSTR("/"));
 	lcd_writeChar(getBufferSize());
-	lcd_writeVoltage(storedVoltage);
+	lcd_writeVoltage(storedVoltage,1023,5);
 }
 
 /*!
  *  Shows the ADC value on the display and on the led bar.
  */
 void displayAdc(void) {
+  // bufferindex for what should be displayed next 
   uint8_t bufferindex = 0;
   while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
-	  lcd_clear();
+	  // prepare to write in line 1 
+	  lcd_line1();
+	  lcd_erase(1);
+	  // write Voltage on LCD
 	  lcd_writeProgString(PSTR("Voltage:"));
-	  lcd_writeVoltage(getAdcValue());
+	  lcd_writeVoltage(getAdcValue(),1023,5);
+	  //convert Voltage to displayble number for LedBar 
 	  uint16_t ledValue =0b00000000;
 	  uint16_t adcResult = getAdcValue();
 	  while(adcResult >= 68){
-		  ledValue = ledValue << 1:
+		  ledValue = ledValue << 1;
 		  ledValue = ledValue + 0b00000010;
 		  adcResult = adcResult -68;
 	  }
+	  // bitmask already set for 15 leds
 	  setLedBar(ledValue);
+	  // options for user input
+	  // press enter to save voltage 
 	  if((os_getInput() & 0b00000001) == 0b00000001){
-		  //speichern der Aktuellen Spannung
 		  storeVoltage();
 	  }
-	  if((os_getInput() & 0b00000100)== 0b00000100){
-		  //u
+	  // press up to increment bufferindex and display next voltage in buffer 
+	  if((os_getInput() & 0b00000100)== 0b00000100 && getBufferIndex()> bufferindex){
+		  //up
+		  bufferindex = bufferindex + 1;
 		  displayVoltageBuffer(bufferindex);
 	  }
-	  if((os_getInput() & 0b00000010)== 0b00000010){
+	  // press down to decrement bufferindex and display last voltage in buffer 
+	  if((os_getInput() & 0b00000010)== 0b00000010 && bufferindex >0 ){
 		  //down
+		 bufferindex = bufferindex - 1;
 		 displayVoltageBuffer(bufferindex);
 	  }
 	  _delay_ms(100);

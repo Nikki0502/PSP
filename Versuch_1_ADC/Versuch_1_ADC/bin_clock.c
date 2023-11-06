@@ -4,10 +4,10 @@
 #include <avr/io.h>
 
 //! Global variables
-uint8_t stunden=12;
-uint8_t minuten=59;
-uint8_t sekunden=45;
-uint16_t millisek=000;
+uint8_t stunden;
+uint8_t minuten;
+uint8_t sekunden;
+uint16_t millisek;
 
 /*!
  * \return The milliseconds counter of the current time.
@@ -53,8 +53,11 @@ void initClock(void) {
     // Set compare register to 195 -> match every 10ms
     OCR0A = 195;
 
-// Init variables
-#warning IMPLEMENT STH. HERE
+	// Init variables
+	stunden=12;
+	minuten=59;
+	sekunden=45;
+	millisek=000;
 
     // Enable timer and global interrupts
     TIMSK0 |= (1 << OCIE0A);
@@ -65,19 +68,19 @@ void initClock(void) {
  *  Updates the global variables to get a valid 12h-time
  */
 void updateClock(void){
-  if(millisek=1000){//groeßer gleich stuff fuer eventuelle Fehler idk ob notwendig
+  if(millisek==1000){//groeßer gleich stuff fuer eventuelle Fehler idk ob notwendig
 	  millisek=0;
 	  sekunden=sekunden+1;
   }
-  if(sekunden=60){
+  if(sekunden==60){
 	  sekunden=0;
 	  minuten=minuten+1;
   }
-  if(minuten=60){
+  if(minuten==60){
 	  minuten=0;
 	  stunden=stunden+1;
   }
-  if(stunden=13){
+  if(stunden==13){
 	  stunden=1;
   }
 }
