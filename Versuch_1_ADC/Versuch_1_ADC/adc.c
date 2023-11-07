@@ -79,17 +79,18 @@ uint8_t getBufferIndex() {
  *
  */
 void storeVoltage(void){
-	//init buffer with size 100
-  if(bufferSize == 0){
-    bufferSize = 100;
-	bufferIndex = 0;
-	bufferStart = malloc(bufferSize * sizeof(uint16_t));  
-  }
-  // save lastCaptured Voltage if buffer is not full
-  if(bufferSize-1>=(bufferIndex)){
-	*(bufferStart + bufferIndex) = lastCaptured;
-	bufferIndex = bufferIndex + 1;  
-  }
+	//init von Buffer
+	if(getBufferSize()==0){
+		bufferSize=100;
+		bufferIndex=0;
+		bufferStart = malloc(bufferSize * sizeof(uint16_t)); 
+	}
+	//speichern von lastVolt fals bufferIndex <100
+	if(bufferIndex<bufferSize){
+		*(bufferStart+bufferIndex)= lastCaptured;
+		bufferIndex +=1;
+	}
+  
 }
 
 /*! \brief Returns the voltage value with the passed index.
@@ -98,9 +99,8 @@ void storeVoltage(void){
  * \return      The voltage value with index ind.
  */
 uint16_t getStoredVoltage(uint8_t ind) {
-	if(ind < bufferIndex){
-		uint16_t storedVooltage = *(bufferStart + ind);
-		return storedVooltage;
+	if(ind<=bufferIndex){
+		return *(bufferStart + ind);
 	}
 	else{
 		return 0;

@@ -16,7 +16,7 @@ void initLedBar(void) {// solln hier trozdem alle als output sein?ß? steht ja ob
 	  DDRA |= 0b11111110;
 	  PORTA &=0b00000001;
   }
-  DDRD |= 0bFF;
+  DDRD |= 0xFF;
 }
 
 /*!

@@ -52,17 +52,15 @@ void displayClock(void) {
  *  Shows the stored voltage values in the second line of the display.
  */
 void displayVoltageBuffer(uint8_t displayIndex) {
-	// set courser to line 2 and erase this line before writing again  
-	lcd_line2();
+	//Vorbereiten 
 	lcd_erase(2);
-	//get the storedVoltage that should be displaed
-	uint16_t storedVoltage = getStoredVoltage(displayIndex);
-	//display the Voltage in a 54/100 Voltag Format
+	lcd_line2();
+	//Ausgabe der Spannung an displayIndex im Buffer
 	char voltString[3];
-	snprintf(voltString,sizeof(voltString), "%03d",getBufferIndex()+1);
-	lcd_writeString(voltString);
+	snprintf(voltString, sizeof(voltString), "%03d",displayIndex);
 	lcd_writeProgString(PSTR("/"));
-	lcd_writeChar(getBufferSize());
+	lcd_writeProgString("100");
+	uint16_t storedVoltage = getStoredVoltage(displayIndex);
 	lcd_writeVoltage(storedVoltage,1023,5);
 }
 
@@ -70,44 +68,50 @@ void displayVoltageBuffer(uint8_t displayIndex) {
  *  Shows the ADC value on the display and on the led bar.
  */
 void displayAdc(void) {
-  // bufferindex for what should be displayed next 
-  uint8_t bufferindex = 0;
-  while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
-	  // prepare to write in line 1 
-	  lcd_line1();
-	  lcd_erase(1);
-	  // write Voltage on LCD
-	  lcd_writeProgString(PSTR("Voltage:"));
-	  lcd_writeVoltage(getAdcValue(),1023,5);
-	  //convert Voltage to displayble number for LedBar 
-	  uint16_t ledValue =0b00000000;
-	  uint16_t adcResult = getAdcValue();
-	  while(adcResult >= 68){
-		  ledValue = ledValue << 1;
-		  ledValue = ledValue + 0b00000010;
-		  adcResult = adcResult -68;
-	  }
-	  // bitmask already set for 15 leds
-	  setLedBar(ledValue);
-	  // options for user input
-	  // press enter to save voltage 
-	  if((os_getInput() & 0b00000001) == 0b00000001){
-		  storeVoltage();
-	  }
-	  // press up to increment bufferindex and display next voltage in buffer 
-	  if((os_getInput() & 0b00000100)== 0b00000100 && getBufferIndex()> bufferindex){
-		  //up
-		  bufferindex = bufferindex + 1;
-		  displayVoltageBuffer(bufferindex);
-	  }
-	  // press down to decrement bufferindex and display last voltage in buffer 
-	  if((os_getInput() & 0b00000010)== 0b00000010 && bufferindex >0 ){
-		  //down
-		 bufferindex = bufferindex - 1;
-		 displayVoltageBuffer(bufferindex);
-	  }
-	  _delay_ms(100);
-  }
+	//Vorbereitung
+	lcd_clear();
+	uint8_t bufferIndex=0;  
+	//Solange C1 gedrückt ist soll das Programm laufen
+	while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
+		_delay_ms(100);//gegen Flackern
+		//Anzeige der Spannung in der erstel Zeile des Displays
+		lcd_erase(1);
+		lcd_line1();
+		lcd_writeProgString(PSTR("Voltage:"));
+		lcd_writeVoltage(getAdcValue(),1023,5);
+		//Ausgabe der Spannung mit LEDBar
+		//Konvertier die AdcValue zu ausgebbaren Wert mit 0,3V pro LED
+		uint16_t ledValue =0b00000000;
+		uint16_t adcResult = getAdcValue();
+		while(adcResult >= 68){
+			ledValue = ledValue << 1;
+			ledValue = ledValue + 0b00000010;
+			adcResult = adcResult -68;
+		}
+		setLedBar(adcResult);
+		//Speichern von Messwerten
+		//Wenn Enter ist gedrueckt
+		if((os_getInput() & 0b00000001) == 0b00000001){
+			storeVoltage();
+		}
+		//Wenn UP ist gedrueckt
+		if((os_getInput() & 0b00000100)== 0b00000100){
+			if(bufferIndex<getBufferIndex()){
+				bufferIndex +=1;
+			}
+		}
+		//Wenn DOWN ist gedrueckt
+		if((os_getInput() & 0b00000010)== 0b00000010){
+			if(bufferIndex>0){
+				bufferIndex -=1;
+			}
+		}
+		displayVoltageBuffer(bufferIndex);		
+	}
+	// checks if ESC is no longer pressed
+	while(( os_getInput() & 0b00001000 ) == 0b00001000){};
+	showMenu();// return to main menu
+  
 }
 
 /*! \brief Starts the passed program
