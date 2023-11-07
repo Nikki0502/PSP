@@ -53,13 +53,14 @@ void displayClock(void) {
  */
 void displayVoltageBuffer(uint8_t displayIndex) {
 	//Vorbereiten 
-	lcd_erase(2);
 	lcd_line2();
+	lcd_erase(2);
 	//Ausgabe der Spannung an displayIndex im Buffer
-	char voltString[3];
-	snprintf(voltString, sizeof(voltString), "%03d",displayIndex);
+	char formattedIndex[4];
+	snprintf(formattedIndex,sizeof(formattedIndex), "%03d", displayIndex+1);
+	lcd_writeString(formattedIndex);
 	lcd_writeProgString(PSTR("/"));
-	lcd_writeProgString("100");
+	lcd_writeProgString(PSTR("100: "));
 	uint16_t storedVoltage = getStoredVoltage(displayIndex);
 	lcd_writeVoltage(storedVoltage,1023,5);
 }
@@ -71,12 +72,12 @@ void displayAdc(void) {
 	//Vorbereitung
 	lcd_clear();
 	uint8_t bufferIndex=0;  
-	//Solange C1 gedrückt ist soll das Programm laufen
+	//Solange esc nicht gedrückt ist soll das Programm laufen
 	while (( os_getInput() & 0b00001000 ) != 0b00001000 ){
 		_delay_ms(100);//gegen Flackern
 		//Anzeige der Spannung in der erstel Zeile des Displays
-		lcd_erase(1);
 		lcd_line1();
+		lcd_erase(1);
 		lcd_writeProgString(PSTR("Voltage:"));
 		lcd_writeVoltage(getAdcValue(),1023,5);
 		//Ausgabe der Spannung mit LEDBar
@@ -88,7 +89,7 @@ void displayAdc(void) {
 			ledValue = ledValue + 0b00000010;
 			adcResult = adcResult -68;
 		}
-		setLedBar(adcResult);
+		setLedBar(ledValue);
 		//Speichern von Messwerten
 		//Wenn Enter ist gedrueckt
 		if((os_getInput() & 0b00000001) == 0b00000001){
@@ -96,14 +97,16 @@ void displayAdc(void) {
 		}
 		//Wenn UP ist gedrueckt
 		if((os_getInput() & 0b00000100)== 0b00000100){
-			if(bufferIndex<getBufferIndex()){
+			if(bufferIndex<getBufferIndex()-1){
 				bufferIndex +=1;
+				//displayVoltageBuffer(bufferIndex);
 			}
 		}
 		//Wenn DOWN ist gedrueckt
 		if((os_getInput() & 0b00000010)== 0b00000010){
 			if(bufferIndex>0){
 				bufferIndex -=1;
+				//displayVoltageBuffer(bufferIndex);
 			}
 		}
 		displayVoltageBuffer(bufferIndex);		
