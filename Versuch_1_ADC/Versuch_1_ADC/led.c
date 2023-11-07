@@ -16,6 +16,7 @@ void initLedBar(void) {// solln hier trozdem alle als output sein?ß? steht ja ob
 	  DDRA |= 0b11111110;
 	  PORTA &=0b00000001;
   }
+  DDRD |= 0bFF;
 }
 
 /*!
@@ -34,6 +35,6 @@ void setLedBar(uint16_t value) {
 	valueA=(value & 0b0000000001111111)<<1;
 	valueD=(value & 0b0111111110000000)>>7;  
   }
-  PORTA |= valueA;
-  PORTD |= valueD;
+  PORTA = ~valueA;
+  PORTD = ~valueD;
 }

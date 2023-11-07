@@ -33,11 +33,15 @@ void displayClock(void) {
   while (( os_getInput() & 0b00001000 ) != 0b00001000 ){// check if ESC is pressed
 	uint16_t clockVal=0b0000000000000000;
 	clockVal |= ((uint16_t)getTimeHours() <<12) | ((uint16_t)getTimeMinutes() << 6) | (uint16_t)getTimeSeconds() ;  // set clockVal to Hour<12 Min<6 Sec
-	setLedBar(clockVal);
-	//FRAGESTUNDE WIE MACHT MAN DAS 
-	char timeString[12]; // 12 long String 
-	snprintf(timeString, sizeof(timeString), "%02d:%02d:%02d:%03d", getTimeHours(),getTimeMinutes(),getTimeSeconds(),getTimeMilliseconds()); // idk ob das so geht?
-	lcd_writeString(timeString);// prints number in HH:MM:SS:mmm fomrat 
+	setLedBar(clockVal);// checkt und das ist richtig lcd_writeHex(clockVal);
+	uint8_t hours = getTimeHours();
+	uint8_t minutes = getTimeMinutes();
+	uint8_t seconds = getTimeSeconds();
+	uint16_t milliseconds = getTimeMilliseconds();
+	char formattedTime[12]; 
+	sprintf(formattedTime, "%02d:%02d:%02d:%03d", hours, minutes, seconds, milliseconds);
+	lcd_writeString(formattedTime);
+	lcd_clear();
   }
   // checks if ESC is no longer pressed 
   while(( os_getInput() & 0b00001000 ) == 0b00001000){};
