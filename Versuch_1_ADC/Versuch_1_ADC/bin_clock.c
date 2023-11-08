@@ -2,12 +2,14 @@
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <stdbool.h>
 
 //! Global variables
 uint8_t stunden;
 uint8_t minuten;
 uint8_t sekunden;
 uint16_t millisek;
+bool update;
 
 /*!
  * \return The milliseconds counter of the current time.
@@ -58,6 +60,7 @@ void initClock(void) {
 	minuten=59;
 	sekunden=45;
 	millisek=000;
+	update = true;
 
     // Enable timer and global interrupts
     TIMSK0 |= (1 << OCIE0A);
@@ -91,4 +94,12 @@ void updateClock(void){
 ISR(TIMER0_COMPA_vect) {
   millisek=millisek+10;
   updateClock();
+  update = true;
+}
+
+bool getUpdate(void){
+	return update;
+}
+void setUpdate(bool b){
+	update = b;
 }

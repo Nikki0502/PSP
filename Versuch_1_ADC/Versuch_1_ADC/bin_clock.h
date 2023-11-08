@@ -11,6 +11,7 @@
 #define _BIN_CLOCK_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 //! Initializes the binary clock (ISR and global variables)
 void initClock(void);
@@ -26,5 +27,10 @@ uint8_t getTimeMinutes();
 
 //! Returns the hour counter of the current time.
 uint8_t getTimeHours();
+
+bool getUpdate();
+
+void setUpdate(bool);
+
 
 #endif
