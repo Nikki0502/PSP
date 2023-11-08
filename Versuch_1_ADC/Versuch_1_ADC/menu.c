@@ -9,6 +9,7 @@
 #include <avr/io.h>
 #include <stdint.h>
 #include <util/delay.h>
+#include <stdbool.h>
 
 /*!
  *  Hello world program.
@@ -40,8 +41,11 @@ void displayClock(void) {
 	uint16_t milliseconds = getTimeMilliseconds();
 	char formattedTime[12]; 
 	sprintf(formattedTime, "%02d:%02d:%02d:%03d", hours, minutes, seconds, milliseconds);
-	lcd_writeString(formattedTime);
-	lcd_clear();
+	if(getUpdate()){
+		lcd_clear();
+		lcd_writeString(formattedTime);
+		setUpdate(false);	
+	}
   }
   // checks if ESC is no longer pressed 
   while(( os_getInput() & 0b00001000 ) == 0b00001000){};
@@ -97,7 +101,7 @@ void displayAdc(void) {
 		}
 		//Wenn UP ist gedrueckt
 		if((os_getInput() & 0b00000100)== 0b00000100){
-			if(bufferIndex<getBufferIndex()-1){
+			if(bufferIndex<getBufferSize()-1){
 				bufferIndex +=1;
 				//displayVoltageBuffer(bufferIndex);
 			}
@@ -109,7 +113,9 @@ void displayAdc(void) {
 				//displayVoltageBuffer(bufferIndex);
 			}
 		}
-		displayVoltageBuffer(bufferIndex);		
+		if(getBufferSize()>0){
+			displayVoltageBuffer(bufferIndex);		
+		}		
 	}
 	// checks if ESC is no longer pressed
 	while(( os_getInput() & 0b00001000 ) == 0b00001000){};
