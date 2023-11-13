@@ -19,26 +19,31 @@ Everything that is necessary to get the input from the Buttons in a clean format
  *
  */
 uint8_t os_getInput(void) {
-#error IMPLEMENT STH. HERE
+  uint8_t pinstate01 = (~PINC & 0b00000011);
+  uint8_t pinstate67 = (~PINC & 0b11000000)>>4;
+  uint8_t pinstate = pinstate01 | pinstate67; //00001100 + 00000011 = 00001111
+  return pinstate;
+  //LSB C0 = Enter, C1 =Down , C2 = Up , MSB C4= Esc
 }
 
 /*!
  *  Initializes DDR and PORT for input
  */
 void os_initInput() {
-#error IMPLEMENT STH. HERE
+  DDRC &= 0b00111100;
+  PORTC |= 0b11000011;
 }
 
 /*!
  *  Endless loop as long as at least one button is pressed.
  */
 void os_waitForNoInput() {
-#error IMPLEMENT STH. HERE
+  while(os_getInput() != 0b00000000){}
 }
 
 /*!
  *  Endless loop until at least one button is pressed.
  */
 void os_waitForInput() {
-#error IMPLEMENT STH. HERE
+  while(os_getInput() == 0b00000000){}
 }
