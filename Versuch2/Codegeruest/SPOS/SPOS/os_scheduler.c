@@ -30,7 +30,7 @@
 //----------------------------------------------------------------------------
 
 //! Array of states for every possible process
-#error IMPLEMENT STH. HERE
+Process processes[MAX_NUMBER_OF_PROCESSES];
 
 //! Index of process that is currently executed (default: idle)
 #warning IMPLEMENT STH. HERE
