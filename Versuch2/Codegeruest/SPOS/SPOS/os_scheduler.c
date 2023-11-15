@@ -93,7 +93,30 @@ void idle(void){
  *          defines.h on failure
  */
 ProcessID os_exec(Program *program, Priority priority) {
-#error IMPLEMENT STH. HERE
+	//finde den ersten freien platz in Array
+	int first_unused_process;
+	for (int i = 0; i=< MAX_NUMBER_OF_PROCESSES;i++){
+		//erster freier platz
+		if (os_processes[i].state==OS_PS_UNUSED){
+			first_unused_process = i;
+			break;
+		}
+		//falls kein platz frei ist 
+		if(i==MAX_NUMBER_OF_PROCESSES){
+			return INVALID_PROCESS;
+		}
+	}
+	//programmzeiger ueberpruefen
+	if (os_processes[first_unused_process]==NULL){
+		return INVALID_PROCESS;
+	}
+	//Programm, Prozesszustand und Prozesspriorität speichern
+	os_processes[first_unused_process].state = OS_PS_READY;
+	os_processes[first_unused_process].program = *program;//program
+	os_processes[first_unused_process].priority = priority;
+	
+	//Prozessstack vorbereiten
+	
 }
 
 /*!

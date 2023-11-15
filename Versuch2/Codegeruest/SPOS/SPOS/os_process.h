@@ -42,9 +42,7 @@ typedef enum ProcessState {
 //! We use a union so we can reduce the number of explicit casts.
 typedef union StackPointer {
     uint16_t as_int;
-    uint8_t *as_ptr;
-	
-	
+    uint8_t *as_ptr;	
 } StackPointer;
 
 /*!
