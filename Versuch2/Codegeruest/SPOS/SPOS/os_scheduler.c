@@ -76,7 +76,12 @@ ISR(TIMER2_COMPA_vect) {
  *  and processor time no other process wants to have.
  */
 void idle(void){
-#warning IMPLEMENT STH. HERE
+	//in endlossschleife "...." ausgeben 
+	while (true){
+		lcd_clear();
+		lcd_writeProgString(PSTR("...."));
+		delayMs(DEFAULT_OUTPUT_DELAY);
+	}
 }
 
 /*!
@@ -116,6 +121,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 	os_processes[first_unused_process].state = OS_PS_READY;
 	os_processes[first_unused_process].program = *program;//program
 	os_processes[first_unused_process].priority = priority;
+	os_processes[first_unused_process].id = first_unused_process;
 	
 	//Prozessstack vorbereiten
 	//neuen Prozess definieren(einfacher zum tippen)
@@ -157,19 +163,15 @@ void os_initScheduler(void){
 	// Hier werden alle auszuführenden Programme mit dieser Funkt in autostart_head eingefühgt 
 	//To DO:
 	//Welche Programme sollen den da eingefühgt werden?
-	//REGISTER_AUTOSTART();
+	//REGISTER_AUTOSTART(program);
 	
 	// Init os_processes mit unused ps
 	for(int i = 0; i <MAX_NUMBER_OF_PROCESSES; i++){
 		os_processes[i].state = OS_PS_UNUSED;
 	}
 	
-	//starten des idle prozesses 
-	//TO DO:
-	//da noch funkt idle oben erst später kommt 
-	//os_exec();
-	
-	//Init alle Processe in autostart_head
+	//exec idle asl erstes sollte somit auch pid=0 haben
+	os_exec(idle(),DEFAULT_PRIORITY);
 	
 	Program current = autostart_head;
 	
@@ -210,7 +212,7 @@ ProcessID os_getCurrentProc(void) {
 		if (os_processes[i].state==OS_PS_RUNNING){
 			currentProc = os_processes[i];
 		}
-    return currentProc;
+    return currentProc.id;
 }
 
 /*!
