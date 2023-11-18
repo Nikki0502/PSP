@@ -35,7 +35,7 @@
 Process os_processes[MAX_NUMBER_OF_PROCESSES];
 
 //! Index of process that is currently executed (default: idle)
-#warning IMPLEMENT STH. HERE
+ProcessID currentProc ; 
 
 //----------------------------------------------------------------------------
 // Private variables
@@ -154,7 +154,34 @@ void os_startScheduler(void) {
  *  initialize its internal data-structures and register.
  */
 void os_initScheduler(void){
-#warning IMPLEMENT STH. HERE
+	// Hier werden alle auszuführenden Programme mit dieser Funkt in autostart_head eingefühgt 
+	//To DO:
+	//Welche Programme sollen den da eingefühgt werden?
+	//REGISTER_AUTOSTART();
+	
+	// Init os_processes mit unused ps
+	for(int i = 0; i <MAX_NUMBER_OF_PROCESSES; i++){
+		os_processes[i].state = OS_PS_UNUSED;
+	}
+	
+	//starten des idle prozesses 
+	//TO DO:
+	//da noch funkt idle oben erst später kommt 
+	//os_exec();
+	
+	//Init alle Processe in autostart_head
+	
+	Program current = autostart_head;
+	
+	//solange in der Liste ein Element ist 
+	while (current != NULL){
+		//falls ein Programm zum auto starten markiet ist 
+		if(){
+			os_exec(autostart_head->program, DEFAULT_PRIORITY);
+		}
+		// naestes programm in autostart_head
+		current = autostart_head->next;
+	}
 }
 
 /*!
@@ -173,8 +200,17 @@ Process *os_getProcessSlot(ProcessID pid) {
  *  \return The process id of the currently active process.
  */
 ProcessID os_getCurrentProc(void) {
-#warning IMPLEMENT STH. HERE
-    return 0;
+	
+	//Kann sein das das einfacher geht idk
+	
+	
+	// läuft ein mal über alle Processe drueber bis den gefunden der gerade lauft 
+	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
+		//momentan laufender Prozess
+		if (os_processes[i].state==OS_PS_RUNNING){
+			currentProc = os_processes[i];
+		}
+    return currentProc;
 }
 
 /*!
