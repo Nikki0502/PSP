@@ -56,6 +56,7 @@ typedef struct {
 	Program* program;
 	StackPointer stackpointer;
 	Priority priority;
+	ProcessID id;
 } Process;
 
 /*!

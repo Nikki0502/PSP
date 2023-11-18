@@ -95,7 +95,7 @@ void idle(void){
 ProcessID os_exec(Program *program, Priority priority) {
 	//finde den ersten freien platz in Array
 	int first_unused_process;
-	for (int i = 0; i=< MAX_NUMBER_OF_PROCESSES;i++){
+	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
 		//erster freier platz
 		if (os_processes[i].state==OS_PS_UNUSED){
 			first_unused_process = i;
@@ -107,7 +107,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 		}
 	}
 	//programmzeiger ueberpruefen
-	if (os_processes[first_unused_process]==NULL){
+	if (*program==NULL){
 		return INVALID_PROCESS;
 	}
 	//Programm, Prozesszustand und Prozesspriorität speichern
@@ -116,7 +116,26 @@ ProcessID os_exec(Program *program, Priority priority) {
 	os_processes[first_unused_process].priority = priority;
 	
 	//Prozessstack vorbereiten
+	//neuen Prozess definieren(einfacher zum tippen)
+	Process newProcess = os_processes[first_unused_process];
+	//Rücksprungadresse speichern und aufteilen in 2 Byte
+    uint16_t processadress = newProcess.stackpointer.as_int;
+	uint8_t *stackbottom = PROCESS_STACK_BOTTOM[newProcess.id];
+	newProcess.stackpointer.as_ptr = stackbottom;
+	uint8_t lowbyte = (uint8_t)(processadress & 0xff);
+	uint8_t highbyte = (uint8_t)(processadress >> 8) & 0xff;
+	//Rücksprungadresse auf Stack speichern
+	newProcess.stackpointer.as_ptr = &lowbyte;
+	newProcess.stackpointer.as_int ++;
+	newProcess.stackpointer.as_ptr = &highbyte;
+	newProcess.stackpointer.as_int ++;
+	//noch STACK_SIZE_PROC einbauen?
 	
+	for(int i=0 ; i<33 ; i++){
+		newProcess.stackpointer.as_ptr = 0b00000000;
+		newProcess.stackpointer.as_int ++;
+	}
+	return newProcess.id;
 }
 
 /*!
