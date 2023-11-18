@@ -17,6 +17,8 @@
 #include "os_scheduling_strategies.h"
 #include "os_taskman.h"
 #include "util.h"
+#include "defines.h"
+
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
@@ -94,7 +96,7 @@ void idle(void){
  */
 ProcessID os_exec(Program *program, Priority priority) {
 	//finde den ersten freien platz in Array
-	int first_unused_process;
+	int first_unused_process = 0;
 	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
 		//erster freier platz
 		if (os_processes[i].state==OS_PS_UNUSED){
@@ -120,8 +122,8 @@ ProcessID os_exec(Program *program, Priority priority) {
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
     uint16_t processadress = newProcess.stackpointer.as_int;
-	uint8_t *stackbottom = PROCESS_STACK_BOTTOM[newProcess.id];
-	newProcess.stackpointer.as_ptr = stackbottom;
+   
+	newProcess.stackpointer.as_int = PROCESS_STACK_BOTTOM(newProcess.id);
 	uint8_t lowbyte = (uint8_t)(processadress & 0xff);
 	uint8_t highbyte = (uint8_t)(processadress >> 8) & 0xff;
 	//Rücksprungadresse auf Stack speichern
