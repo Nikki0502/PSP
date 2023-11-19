@@ -140,7 +140,7 @@ void os_errorPStr(const char *str) {
 	uint8_t save_SREG =SREG;
 	SREG &= 0b01111111; 
 	lcd_clear();
-	lcd_writeProgString(PSTR(str));
+	lcd_writeErrorProgString(str);
 	while (os_getInput() != 0b00001001){}// user can acknowledge the Error by presing Enter+ESC
 	os_waitForNoInput();//"das Betriebssystem soll fortgesetzt werden sobald alle Tasten wieder losgelassen wurden"
 	SREG = save_SREG; 

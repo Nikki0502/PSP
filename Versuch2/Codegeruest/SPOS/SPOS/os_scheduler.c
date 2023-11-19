@@ -163,7 +163,7 @@ void os_initScheduler(void){
 	// Hier werden alle auszuführenden Programme mit dieser Funkt in autostart_head eingefühgt 
 	//To DO:
 	//Welche Programme sollen den da eingefühgt werden?
-	//REGISTER_AUTOSTART(program);
+	REGISTER_AUTOSTART(program);
 	
 	// Init os_processes mit unused ps
 	for(int i = 0; i <MAX_NUMBER_OF_PROCESSES; i++){
@@ -171,18 +171,16 @@ void os_initScheduler(void){
 	}
 	
 	//exec idle asl erstes sollte somit auch pid=0 haben
-	os_exec(idle(),DEFAULT_PRIORITY);
-	
-	Program current = autostart_head;
+	os_exec(*idle,DEFAULT_PRIORITY);
 	
 	//solange in der Liste ein Element ist 
-	while (current != NULL){
+	while (autostart_head != NULL){
 		//falls ein Programm zum auto starten markiet ist 
 		if(){
 			os_exec(autostart_head->program, DEFAULT_PRIORITY);
 		}
 		// naestes programm in autostart_head
-		current = autostart_head->next;
+		autostart_head = autostart_head->next;
 	}
 }
 
@@ -210,9 +208,9 @@ ProcessID os_getCurrentProc(void) {
 	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
 		//momentan laufender Prozess
 		if (os_processes[i].state==OS_PS_RUNNING){
-			currentProc = os_processes[i];
+			currentProc = os_processes[i].id;
 		}
-    return currentProc.id;
+    return currentProc;
 }
 
 /*!
