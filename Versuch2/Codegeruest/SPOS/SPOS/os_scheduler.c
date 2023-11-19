@@ -68,7 +68,35 @@ __attribute__((naked));
  *  the processor to that process.
  */
 ISR(TIMER2_COMPA_vect) {
-#warning IMPLEMENT STH. HERE
+//sichern des Laufzeitkontext
+saveContext();
+
+currentProc = os_getCurrentProc();
+//sichern des des Stackpointes fuer den Processstack des aktuellen Processes
+os_processes[currentProc].stackpointer.as_ptr = &SP;//rot unterstrichen soll hier klar gehen laut Doc
+
+//Setzen des SP Reg auf den Scheduler Stack
+BOTTOM_OF_ISR_STACK = &SP; //???
+
+//Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
+os_processes[currentProc].state = OS_PS_READY;
+
+//Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
+switch(os_getSchedulingStrategy()){
+	case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
+	case OS_SS_EVEN : currentProc = os_Scheduler_Even(os_processes, currentProc);break;
+	//keine lust das für die andern zu machen gerade und so macht das keine fehlermeldung
+	default : currentProc = 0;break;
+}
+
+//Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
+os_processes[currentProc].state = OS_PS_RUNNING;
+
+//Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
+SP = os_processes[currentProc].stackpointer.as_ptr;
+
+//Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
+restoreContext();
 }
 
 /*!
@@ -152,7 +180,14 @@ ProcessID os_exec(Program *program, Priority priority) {
  *  applications.
  */
 void os_startScheduler(void) {
-#warning IMPLEMENT STH. HERE
+	// Setze var currentprocess auf 0(idle)
+	currentProc = 0;
+	// idle auf Running
+	os_processes[currentProc].state = OS_PS_RUNNING;
+	// Setzen des Stackpointers auf den Prozessstack des Leerlaufprozesse
+	SP = os_processes[currentProc].stackpointer.as_ptr;
+	//Sprung in den Leerlaufprozess mit restoreContext()
+	restoreContext();
 }
 
 /*!
@@ -176,7 +211,7 @@ void os_initScheduler(void){
 	//solange in der Liste ein Element ist 
 	while (autostart_head != NULL){
 		//falls ein Programm zum auto starten markiet ist 
-		if(){
+		if(true){
 			os_exec(autostart_head->program, DEFAULT_PRIORITY);
 		}
 		// naestes programm in autostart_head
