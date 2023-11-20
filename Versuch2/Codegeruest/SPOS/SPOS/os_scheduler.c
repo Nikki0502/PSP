@@ -262,6 +262,7 @@ ProcessID os_getCurrentProc(void) {
 		if (os_processes[i].state==OS_PS_RUNNING){
 			currentProc = os_processes[i].id;
 		}
+	}
     return currentProc;
 }
 
