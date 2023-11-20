@@ -78,6 +78,9 @@ os_processes[currentProc].stackpointer.as_ptr = &SP;//rot unterstrichen soll hie
 //Setzen des SP Reg auf den Scheduler Stack
 BOTTOM_OF_ISR_STACK = &SP; //???
 
+//Speichern der Prüfsumme auf den Schedulerstack
+*BOTTOM_OF_ISR_STACK = StackChecksum(currentProc);
+
 //Aufruf des des Taskman
 if(os_getInput()==0b00001001){
 	while(os_getInput()==0b00001001){}
@@ -135,6 +138,8 @@ void idle(void){
  *          defines.h on failure
  */
 ProcessID os_exec(Program *program, Priority priority) {
+	//ist das hier die richitge stelle???????????????????
+	os_enterCriticalSection();
 	//finde den ersten freien platz in Array
 	int first_unused_process = 0;
 	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
@@ -143,7 +148,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 			first_unused_process = i;
 			break;
 		}
-		//falls kein platz frei ist 
+		//falls kein platz frei ist
 		if(i==MAX_NUMBER_OF_PROCESSES){
 			return INVALID_PROCESS;
 		}
@@ -162,25 +167,24 @@ ProcessID os_exec(Program *program, Priority priority) {
 	//neuen Prozess definieren(einfacher zum tippen)
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
-    uint16_t processadress = newProcess.stackpointer.as_int;
+	uint16_t processadress = newProcess.stackpointer.as_int;
 	
-	//ist das hier die richitge stelle?
-	os_enterCriticalSection();
-   
 	newProcess.stackpointer.as_int = PROCESS_STACK_BOTTOM(newProcess.id);
 	uint8_t lowbyte = (uint8_t)(processadress & 0xff);
 	uint8_t highbyte = (uint8_t)(processadress >> 8) & 0xff;
 	//Rücksprungadresse auf Stack speichern
 	newProcess.stackpointer.as_ptr = &lowbyte;
-	newProcess.stackpointer.as_int ++;
+	newProcess.stackpointer.as_int --;
 	newProcess.stackpointer.as_ptr = &highbyte;
-	newProcess.stackpointer.as_int ++;
+	newProcess.stackpointer.as_int --;
 	//noch STACK_SIZE_PROC einbauen?
 	
 	for(int i=0 ; i<33 ; i++){
 		newProcess.stackpointer.as_ptr = 0b00000000;
 		newProcess.stackpointer.as_int ++;
 	}
+	//Prüfsumme des Prozesses initialisieren
+	os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
 	
 	os_leaveCriticalSection();
 	
@@ -332,6 +336,13 @@ void os_leaveCriticalSection(void){
  *  \return The checksum of the pid'th stack.
  */
 StackChecksum os_getStackChecksum(ProcessID pid) {
-#warning IMPLEMENT STH. HERE
-    return 0;
+	StackChecksum result = 0b00000000;
+	Process process = os_processes[pid];
+	uint16_t *currentadress;
+	currentadress = PROCESS_STACK_BOTTOM(pid);
+	while(&currentadress > process.stackpointer.as_int){
+		result = result ^ *currentadress;
+		currentadress--;
+	}
+	return result;
 }
