@@ -45,7 +45,7 @@ ProcessID currentProc ;
 SchedulingStrategy currentSchedulingStrategy;
 
 //! Count of currently nested critical sections
-#warning IMPLEMENT STH. HERE
+uint8_t verschachtelungsTiefe;
 
 //----------------------------------------------------------------------------
 // Private function declarations
@@ -156,6 +156,9 @@ ProcessID os_exec(Program *program, Priority priority) {
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
     uint16_t processadress = newProcess.stackpointer.as_int;
+	
+	//ist das hier die richitge stelle?
+	os_enterCriticalSection();
    
 	newProcess.stackpointer.as_int = PROCESS_STACK_BOTTOM(newProcess.id);
 	uint8_t lowbyte = (uint8_t)(processadress & 0xff);
@@ -171,6 +174,9 @@ ProcessID os_exec(Program *program, Priority priority) {
 		newProcess.stackpointer.as_ptr = 0b00000000;
 		newProcess.stackpointer.as_int ++;
 	}
+	
+	os_leaveCriticalSection();
+	
 	return newProcess.id;
 }
 
@@ -274,7 +280,18 @@ SchedulingStrategy os_getSchedulingStrategy(void) {
  *  This function supports up to 255 nested critical sections.
  */
 void os_enterCriticalSection(void) {
-#warning IMPLEMENT STH. HERE
+	if (verschachtelungsTiefe<=0){
+		os_errorPStr("Zu oft Crit.Sec. verallsen");
+	}
+	//savve SREG
+	char savedSERG = SREG;
+	// deaktiviere Global Interupt Bit
+	SREG &= 0b01111111;
+	// inkrement verschahtelungstiefe
+	verschachtelungsTiefe+=1;
+	//deaktivieren des Schedulers "Bit OCIE2A im Register TIMSK2 auf den Wert 0 gesetz"
+	TIMSK2 &= ~(1 << OCIE2A);
+	SREG = savedSERG;
 }
 
 /*!
@@ -284,7 +301,21 @@ void os_enterCriticalSection(void) {
  *  has to be reactivated.
  */
 void os_leaveCriticalSection(void){
-#warning IMPLEMENT STH. HERE
+	if (verschachtelungsTiefe<=0){
+		os_errorPStr("Zu oft Crit.Sec. verallsen");
+	}
+	//savve SREG
+	char savedSERG = SREG;
+	// deaktiviere Global Interupt Bit
+	SREG &= 0b01111111;
+	// dekrement verschahtelungstiefe
+	verschachtelungsTiefe-=1;
+	//aktivieren des Schedulers wenn kein critSection mehr
+	if(verschachtelungsTiefe==0){
+		// Setze das Bit OCIE2A im Register TIMSK2 auf 1
+		TIMSK2 |= (1 << OCIE2A);
+	}
+	SREG = savedSERG;
 }
 
 /*!
