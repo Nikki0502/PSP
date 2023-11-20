@@ -50,8 +50,20 @@ void os_resetProcessSchedulingInformation(ProcessID id) {
  *  \return The next process to be executed determined on the basis of the even strategy.
  */
 ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
-#warning IMPLEMENT STH. HERE
-    return 0;
+	while(true){
+		//kuckt sich den naechsten Process an
+		current+=1;
+		//ausser es ist der Letzte Prozess dann den 0ten
+		if (current==MAX_NUMBER_OF_PROCESSES){
+			current = 0;
+		}
+		//ob dieser Prozess ready ist wenn ja breche ab
+		if(processes[current].state == OS_PS_READY){
+			break;
+		}
+	}
+	//so wird auch falls kein anderer Prozess ready ist wieder der alte zurueck gegeben
+    return current;
 }
 
 /*!
@@ -63,8 +75,27 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
  *  \return The next process to be executed determined on the basis of the random strategy.
  */
 ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
-#warning IMPLEMENT STH. HERE
-    return 0;
+	int randnumber = rand();
+	int processInReady= 0;
+	// um alle prozesse die ready sind heraus zu finden
+	for(int i = 0; i< MAX_NUMBER_OF_PROCESSES;i++){
+		if(processes[i].state== OS_PS_RUNNING){
+			processInReady+=1;
+		}
+	}
+	// um nicht das array mehr mals durch gehen zu muesse modulo benutzen
+	randnumber = randnumber % processInReady;
+	for(int i = 0; i< MAX_NUMBER_OF_PROCESSES;i++){
+		if(processes[i].state== OS_PS_RUNNING){
+			randnumber-=1;
+		}
+		//ergebnis somit der randnumber+1 prozess in ready weil bei randnummber=0 soll er beim ersten halten 
+		if(randnumber<0){
+			current = i;
+			break;
+		}
+	}	
+    return current;
 }
 
 /*!
