@@ -42,7 +42,7 @@ ProcessID currentProc ;
 //----------------------------------------------------------------------------
 
 //! Currently active scheduling strategy
-#warning IMPLEMENT STH. HERE
+SchedulingStrategy currentSchedulingStrategy;
 
 //! Count of currently nested critical sections
 #warning IMPLEMENT STH. HERE
@@ -254,7 +254,7 @@ ProcessID os_getCurrentProc(void) {
  *  \param strategy The strategy that will be used after the function finishes.
  */
 void os_setSchedulingStrategy(SchedulingStrategy strategy){
-#warning IMPLEMENT STH. HERE
+	currentSchedulingStrategy = strategy;
 }
 
 /*!
@@ -263,8 +263,7 @@ void os_setSchedulingStrategy(SchedulingStrategy strategy){
  *  \return The current scheduling strategy.
  */
 SchedulingStrategy os_getSchedulingStrategy(void) {
-#warning IMPLEMENT STH. HERE
-    return OS_SS_EVEN;
+    return currentSchedulingStrategy;
 }
 
 /*!
