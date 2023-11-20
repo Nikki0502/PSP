@@ -78,6 +78,13 @@ os_processes[currentProc].stackpointer.as_ptr = &SP;//rot unterstrichen soll hie
 //Setzen des SP Reg auf den Scheduler Stack
 BOTTOM_OF_ISR_STACK = &SP; //???
 
+//Aufruf des des Taskman
+if(os_getInput()==0b00001001){
+	while(os_getInput()==0b00001001){}
+	os_taskManMain();
+}
+
+
 //Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
 os_processes[currentProc].state = OS_PS_READY;
 
