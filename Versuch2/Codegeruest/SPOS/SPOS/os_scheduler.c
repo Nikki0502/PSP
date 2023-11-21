@@ -336,9 +336,9 @@ StackChecksum os_getStackChecksum(ProcessID pid) {
 	StackChecksum result = 0b00000000;
 	Process process = os_processes[pid];
 	uint8_t *current = process.sp.as_ptr;
-	while ((uint16_t)current>= PROCESS_STACK_BOTTOM(pid)){
+	while ((uint16_t)current<= PROCESS_STACK_BOTTOM(pid)){
 		result= result ^ *current;
-		current --; 
+		current ++; 
 	}
 	return result;
 }
