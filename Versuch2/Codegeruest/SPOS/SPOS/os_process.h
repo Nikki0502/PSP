@@ -57,6 +57,7 @@ typedef struct {
 	StackPointer sp;
 	Priority priority;
 	ProcessID id;
+	StackChecksum checksum;
 } Process;
 
 /*!

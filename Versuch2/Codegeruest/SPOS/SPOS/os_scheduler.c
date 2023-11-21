@@ -69,28 +69,31 @@ __attribute__((naked));
  */
 ISR(TIMER2_COMPA_vect) {
 	currentProc = os_getCurrentProc();
-	//sichern des Laufzeitkontext
+	//2.sichern des Laufzeitkontext
 	saveContext();
-	//sichern des des Stackpointes fuer den Processstack des aktuellen Processes
-	*(os_processes[currentProc].sp.as_ptr) = SP;//rot unterstrichen soll hier klar gehen laut Doc
+	//3.sichern des des Stackpointes fuer den Processstack des aktuellen Processes
+	*(os_processes[currentProc].sp.as_ptr) = SP;
 
-	//Setzen des SP Reg auf den Scheduler Stack
+	//4.Setzen des SP Reg auf den Scheduler Stack
 	SP = BOTTOM_OF_ISR_STACK;
-
+	
+	
+	//WO GENAU SOLL DIE CHECKSUM ABGESPEICHERT WERDEN?UND SPÄTER WIEDER VERGLICHEN WERDEN
 	//Speichern der Prüfsumme auf den Schedulerstack
 	//*BOTTOM_OF_ISR_STACK = StackChecksum(currentProc);
-
+	
+	/*
 	//Aufruf des des Taskman
 	if(os_getInput()==0b00001001){
 		while(os_getInput()==0b00001001){}
 		os_taskManMain();
 	}
+	*/
 
-
-	//Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
+	//5.Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
 	os_processes[currentProc].state = OS_PS_READY;
 
-	//Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
+	//6.Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
 	switch(os_getSchedulingStrategy()){
 		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
 		case OS_SS_EVEN : currentProc = os_Scheduler_Even(os_processes, currentProc);break;
@@ -98,13 +101,13 @@ ISR(TIMER2_COMPA_vect) {
 		default : currentProc = 0;break;
 	}
 
-	//Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
+	//7.Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
 	os_processes[currentProc].state = OS_PS_RUNNING;
 
-	//Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
+	//8.Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
 	SP = *(os_processes[currentProc].sp.as_ptr);
 
-	//Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
+	//10.Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
 	restoreContext();
 }
 
@@ -183,8 +186,8 @@ ProcessID os_exec(Program *program, Priority priority) {
 		os_processes[first_unused_process].sp.as_ptr --;
 	}
 	
-	//Prüfsumme des Prozesses initialisieren
-	//os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
+	//Pruefsumme des Prozesses initialisieren
+	os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
 	
 	os_leaveCriticalSection();
 	
@@ -212,11 +215,6 @@ void os_startScheduler(void) {
  *  initialize its internal data-structures and register.
  */
 void os_initScheduler(void){
-	// Hier werden alle auszuführenden Programme mit dieser Funkt in autostart_head eingefühgt 
-	//To DO:
-	//Welche Programme sollen den da eingefühgt werden?
-	//REGISTER_AUTOSTART(program);
-	
 	// Init os_processes mit unused ps
 	for(int i = 0; i <MAX_NUMBER_OF_PROCESSES; i++){
 		os_processes[i].state = OS_PS_UNUSED;
@@ -228,9 +226,10 @@ void os_initScheduler(void){
 	//solange in der Liste ein Element ist 
 	while (autostart_head != NULL){
 		//falls ein Programm zum auto starten markiet ist 
-		if(true){
-			os_exec(autostart_head->program, DEFAULT_PRIORITY);
-		}
+		//if(true){
+			//os_exec(autostart_head->program, DEFAULT_PRIORITY);
+		//}
+		os_exec(autostart_head->program, DEFAULT_PRIORITY);
 		// naestes programm in autostart_head
 		autostart_head = autostart_head->next;
 	}
@@ -252,10 +251,6 @@ Process *os_getProcessSlot(ProcessID pid) {
  *  \return The process id of the currently active process.
  */
 ProcessID os_getCurrentProc(void) {
-	
-	//Kann sein das das einfacher geht idk
-	
-	
 	// läuft ein mal über alle Processe drueber bis den gefunden der gerade lauft 
 	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
 		//momentan laufender Prozess
@@ -296,7 +291,7 @@ void os_enterCriticalSection(void) {
 	if (verschachtelungsTiefe<=0){
 		os_errorPStr("Zu oft Crit.Sec. verallsen");
 	}
-	//savve SREG
+	//save SREG
 	char savedSERG = SREG;
 	// deaktiviere Global Interupt Bit
 	SREG &= 0b01111111;
@@ -317,7 +312,7 @@ void os_leaveCriticalSection(void){
 	if (verschachtelungsTiefe<=0){
 		os_errorPStr("Zu oft Crit.Sec. verallsen");
 	}
-	//savve SREG
+	//save SREG
 	char savedSERG = SREG;
 	// deaktiviere Global Interupt Bit
 	SREG &= 0b01111111;
@@ -338,16 +333,12 @@ void os_leaveCriticalSection(void){
  *  \return The checksum of the pid'th stack.
  */
 StackChecksum os_getStackChecksum(ProcessID pid) {
-	/*
 	StackChecksum result = 0b00000000;
 	Process process = os_processes[pid];
-	uint16_t *currentadress;
-	currentadress = PROCESS_STACK_BOTTOM(pid);
-	while(&currentadress > process.sp.as_int){
-		result = result ^ *currentadress;
-		currentadress--;
+	uint8_t *current = process.sp.as_ptr;
+	while ((uint16_t)current>= PROCESS_STACK_BOTTOM(pid)){
+		result= result ^ *current;
+		current --; 
 	}
 	return result;
-	*/
-	return 0;
 }
