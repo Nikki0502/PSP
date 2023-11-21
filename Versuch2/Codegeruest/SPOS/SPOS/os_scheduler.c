@@ -68,45 +68,44 @@ __attribute__((naked));
  *  the processor to that process.
  */
 ISR(TIMER2_COMPA_vect) {
-//sichern des Laufzeitkontext
-saveContext();
+	currentProc = os_getCurrentProc();
+	//sichern des Laufzeitkontext
+	saveContext();
+	//sichern des des Stackpointes fuer den Processstack des aktuellen Processes
+	*(os_processes[currentProc].sp.as_ptr) = SP;//rot unterstrichen soll hier klar gehen laut Doc
 
-currentProc = os_getCurrentProc();
-//sichern des des Stackpointes fuer den Processstack des aktuellen Processes
-os_processes[currentProc].stackpointer.as_ptr = &SP;//rot unterstrichen soll hier klar gehen laut Doc
+	//Setzen des SP Reg auf den Scheduler Stack
+	SP = BOTTOM_OF_ISR_STACK;
 
-//Setzen des SP Reg auf den Scheduler Stack
-BOTTOM_OF_ISR_STACK = &SP; //???
+	//Speichern der Prüfsumme auf den Schedulerstack
+	//*BOTTOM_OF_ISR_STACK = StackChecksum(currentProc);
 
-//Speichern der Prüfsumme auf den Schedulerstack
-*BOTTOM_OF_ISR_STACK = StackChecksum(currentProc);
-
-//Aufruf des des Taskman
-if(os_getInput()==0b00001001){
-	while(os_getInput()==0b00001001){}
-	os_taskManMain();
-}
+	//Aufruf des des Taskman
+	if(os_getInput()==0b00001001){
+		while(os_getInput()==0b00001001){}
+		os_taskManMain();
+	}
 
 
-//Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
-os_processes[currentProc].state = OS_PS_READY;
+	//Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
+	os_processes[currentProc].state = OS_PS_READY;
 
-//Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
-switch(os_getSchedulingStrategy()){
-	case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
-	case OS_SS_EVEN : currentProc = os_Scheduler_Even(os_processes, currentProc);break;
-	//keine lust das für die andern zu machen gerade und so macht das keine fehlermeldung
-	default : currentProc = 0;break;
-}
+	//Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
+	switch(os_getSchedulingStrategy()){
+		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
+		case OS_SS_EVEN : currentProc = os_Scheduler_Even(os_processes, currentProc);break;
+		//keine lust das für die andern zu machen gerade und so macht das keine fehlermeldung
+		default : currentProc = 0;break;
+	}
 
-//Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
-os_processes[currentProc].state = OS_PS_RUNNING;
+	//Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
+	os_processes[currentProc].state = OS_PS_RUNNING;
 
-//Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
-SP = os_processes[currentProc].stackpointer.as_ptr;
+	//Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
+	SP = *(os_processes[currentProc].sp.as_ptr);
 
-//Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
-restoreContext();
+	//Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
+	restoreContext();
 }
 
 /*!
@@ -168,24 +167,24 @@ ProcessID os_exec(Program *program, Priority priority) {
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
 	
-	os_processes[first_unused_process].stackpointer.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
+	os_processes[first_unused_process].sp.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
 	uint16_t programadress = (uint16_t)program;
 	
 	uint8_t lowbyte = (uint8_t)programadress;
 	uint8_t highbyte = (uint8_t)(programadress >> 8);
 	
-	*(os_processes[first_unused_process].stackpointer.as_ptr) = lowbyte;
-	os_processes[first_unused_process].stackpointer.as_ptr --;
-	*(os_processes[first_unused_process].stackpointer.as_ptr) = highbyte;
-	os_processes[first_unused_process].stackpointer.as_ptr --;
+	*(os_processes[first_unused_process].sp.as_ptr) = lowbyte;
+	os_processes[first_unused_process].sp.as_ptr --;
+	*(os_processes[first_unused_process].sp.as_ptr) = highbyte;
+	os_processes[first_unused_process].sp.as_ptr --;
 	
 	for(int i = 0; i < 33; i++){
-		*(os_processes[first_unused_process].stackpointer.as_ptr) = 0x00;
-		os_processes[first_unused_process].stackpointer.as_ptr --;
+		*(os_processes[first_unused_process].sp.as_ptr) = 0x00;
+		os_processes[first_unused_process].sp.as_ptr --;
 	}
 	
 	//Prüfsumme des Prozesses initialisieren
-	os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
+	//os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
 	
 	os_leaveCriticalSection();
 	
@@ -202,8 +201,8 @@ void os_startScheduler(void) {
 	currentProc = 0;
 	// idle auf Running
 	os_processes[currentProc].state = OS_PS_RUNNING;
-	// Setzen des Stackpointers auf den Prozessstack des Leerlaufprozesse
-	SP = os_processes[currentProc].stackpointer.as_ptr;
+	// Setzen des sp auf den Prozessstack des Leerlaufprozesse
+	SP = *(os_processes[currentProc].sp.as_ptr);
 	//Sprung in den Leerlaufprozess mit restoreContext()
 	restoreContext();
 }
@@ -216,7 +215,7 @@ void os_initScheduler(void){
 	// Hier werden alle auszuführenden Programme mit dieser Funkt in autostart_head eingefühgt 
 	//To DO:
 	//Welche Programme sollen den da eingefühgt werden?
-	REGISTER_AUTOSTART(program);
+	//REGISTER_AUTOSTART(program);
 	
 	// Init os_processes mit unused ps
 	for(int i = 0; i <MAX_NUMBER_OF_PROCESSES; i++){
@@ -262,6 +261,7 @@ ProcessID os_getCurrentProc(void) {
 		//momentan laufender Prozess
 		if (os_processes[i].state==OS_PS_RUNNING){
 			currentProc = os_processes[i].id;
+			break;
 		}
 	}
     return currentProc;
@@ -338,13 +338,16 @@ void os_leaveCriticalSection(void){
  *  \return The checksum of the pid'th stack.
  */
 StackChecksum os_getStackChecksum(ProcessID pid) {
+	/*
 	StackChecksum result = 0b00000000;
 	Process process = os_processes[pid];
 	uint16_t *currentadress;
 	currentadress = PROCESS_STACK_BOTTOM(pid);
-	while(&currentadress > process.stackpointer.as_int){
+	while(&currentadress > process.sp.as_int){
 		result = result ^ *currentadress;
 		currentadress--;
 	}
 	return result;
+	*/
+	return 0;
 }

@@ -58,7 +58,7 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 		}
 	}
 	//falls kein Prozess in Ready soll idle
-	if(processInReady = 0){
+	if(processInReady == 0){
 		current = 0;
 	}
 	else{
@@ -102,7 +102,7 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
 			randnumber-=1;
 		}
 		//ergebnis somit der randnumber+1 prozess in ready weil bei randnummber=0 soll er beim ersten halten 
-		if(randnumber= -1){
+		if(randnumber== -1){
 			current = i;
 		}
 	}	

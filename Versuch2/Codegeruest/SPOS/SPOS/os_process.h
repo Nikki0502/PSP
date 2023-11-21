@@ -54,7 +54,7 @@ typedef union StackPointer {
 typedef struct {
     ProcessState state;
 	Program* program;
-	StackPointer stackpointer;
+	StackPointer sp;
 	Priority priority;
 	ProcessID id;
 } Process;
