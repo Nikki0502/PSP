@@ -167,7 +167,6 @@ ProcessID os_exec(Program *program, Priority priority) {
 	//neuen Prozess definieren(einfacher zum tippen)
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
-	uint16_t processadress = newProcess.stackpointer.as_int;
 	
 	os_processes[first_unused_process].stackpointer.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
 	uint16_t programadress = (uint16_t)program;
