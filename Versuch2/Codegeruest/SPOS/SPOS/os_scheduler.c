@@ -169,20 +169,22 @@ ProcessID os_exec(Program *program, Priority priority) {
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
 	uint16_t processadress = newProcess.stackpointer.as_int;
 	
-	newProcess.stackpointer.as_int = PROCESS_STACK_BOTTOM(newProcess.id);
-	uint8_t lowbyte = (uint8_t)(processadress & 0xff);
-	uint8_t highbyte = (uint8_t)(processadress >> 8) & 0xff;
-	//Rücksprungadresse auf Stack speichern
-	newProcess.stackpointer.as_ptr = &lowbyte;
-	newProcess.stackpointer.as_int --;
-	newProcess.stackpointer.as_ptr = &highbyte;
-	newProcess.stackpointer.as_int --;
-	//noch STACK_SIZE_PROC einbauen?
+	os_processes[first_unused_process].stackpointer.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
+	uint16_t programadress = (uint16_t)program;
 	
-	for(int i=0 ; i<33 ; i++){
-		newProcess.stackpointer.as_ptr = 0b00000000;
-		newProcess.stackpointer.as_int ++;
+	uint8_t lowbyte = (uint8_t)programadress;
+	uint8_t highbyte = (uint8_t)(programadress >> 8);
+	
+	*(os_processes[first_unused_process].stackpointer.as_ptr) = lowbyte;
+	os_processes[first_unused_process].stackpointer.as_ptr --;
+	*(os_processes[first_unused_process].stackpointer.as_ptr) = highbyte;
+	os_processes[first_unused_process].stackpointer.as_ptr --;
+	
+	for(int i = 0; i < 33; i++){
+		*(os_processes[first_unused_process].stackpointer.as_ptr) = 0x00;
+		os_processes[first_unused_process].stackpointer.as_ptr --;
 	}
+	
 	//Prüfsumme des Prozesses initialisieren
 	os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
 	
