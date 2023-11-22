@@ -12,7 +12,7 @@ The file contains five strategies:
 */
 
 #include "os_scheduling_strategies.h"
-
+#include "os_core.h"
 #include "defines.h"
 
 #include <stdlib.h>
@@ -53,7 +53,7 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 	uint16_t processInReady= 0;
 	// um alle prozesse die ready sind heraus zu finden
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
-		if(processes[i].state== OS_PS_RUNNING){
+		if(processes[i].state== OS_PS_READY){
 			processInReady+=1;
 		}
 	}
@@ -91,19 +91,18 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
 	uint16_t processInReady= 0;
 	// um alle prozesse die ready sind heraus zu finden
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
-		if(processes[i].state== OS_PS_RUNNING){
+		if(processes[i].state== OS_PS_READY){
 			processInReady+=1;
 		}
 	}
 	// um nicht das array mehr mals durch gehen zu muesse modulo benutzen
 	randnumber = randnumber % processInReady;
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
-		if(processes[i].state== OS_PS_RUNNING){
-			randnumber-=1;
-		}
-		//ergebnis somit der randnumber+1 prozess in ready weil bei randnummber=0 soll er beim ersten halten 
-		if(randnumber== -1){
+		if(randnumber== 0){
 			current = i;
+		}
+		if(processes[i].state== OS_PS_READY){
+			randnumber-=1;
 		}
 	}	
 	//fals kein prozess ready ist soll idle 

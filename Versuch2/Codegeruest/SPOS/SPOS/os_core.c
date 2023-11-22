@@ -137,11 +137,11 @@ void os_init(void) {
 void os_errorPStr(const char *str) {
 	/*SREG ka wie das funkt aber an sich soll hier dei alte gespeichert und dann das msb auf 0 um interrupt flag zu deaktivieren 
 	und dann später wieder auf den alten zustand setzen */
-	uint8_t save_SREG =SREG;
+	uint8_t save_SREG = (SREG & 0b10000000);
 	SREG &= 0b01111111; 
 	lcd_clear();
 	lcd_writeErrorProgString(str);
 	while (os_getInput() != 0b00001001){}// user can acknowledge the Error by presing Enter+ESC
 	os_waitForNoInput();//"das Betriebssystem soll fortgesetzt werden sobald alle Tasten wieder losgelassen wurden"
-	SREG = save_SREG; 
+	SREG |= save_SREG; 
 }

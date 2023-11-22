@@ -45,7 +45,7 @@ ProcessID currentProc ;
 SchedulingStrategy currentSchedulingStrategy;
 
 //! Count of currently nested critical sections
-uint8_t verschachtelungsTiefe;
+uint8_t criticalSectionCount;
 
 //----------------------------------------------------------------------------
 // Private function declarations
@@ -68,31 +68,28 @@ __attribute__((naked));
  *  the processor to that process.
  */
 ISR(TIMER2_COMPA_vect) {
-	currentProc = os_getCurrentProc();
 	//2.sichern des Laufzeitkontext
 	saveContext();
 	//3.sichern des des Stackpointes fuer den Processstack des aktuellen Processes
-	*(os_processes[currentProc].sp.as_ptr) = SP;
+	os_processes[currentProc].sp.as_int = SP;
 
 	//4.Setzen des SP Reg auf den Scheduler Stack
-	SP = BOTTOM_OF_ISR_STACK;
+	SP = BOTTOM_OF_ISR_STACK;	
 	
-	
-	//WO GENAU SOLL DIE CHECKSUM ABGESPEICHERT WERDEN?UND SPÄTER WIEDER VERGLICHEN WERDEN
-	//Speichern der Prüfsumme auf den Schedulerstack
-	//*BOTTOM_OF_ISR_STACK = StackChecksum(currentProc);
-	
-	/*
 	//Aufruf des des Taskman
 	if(os_getInput()==0b00001001){
 		while(os_getInput()==0b00001001){}
 		os_taskManMain();
 	}
-	*/
+	
 
 	//5.Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
 	os_processes[currentProc].state = OS_PS_READY;
-
+	
+	//WO GENAU SOLL DIE CHECKSUM ABGESPEICHERT WERDEN?UND SPÄTER WIEDER VERGLICHEN WERDEN
+	//Speichern der Prüfsumme auf den Schedulerstack
+	os_processes[currentProc].checksum = os_getStackChecksum(currentProc);
+	
 	//6.Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
 	switch(os_getSchedulingStrategy()){
 		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
@@ -100,12 +97,15 @@ ISR(TIMER2_COMPA_vect) {
 		//keine lust das für die andern zu machen gerade und so macht das keine fehlermeldung
 		default : currentProc = 0;break;
 	}
+	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){
+		os_error("Pruefsumme falchs");
+	}
 
 	//7.Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
 	os_processes[currentProc].state = OS_PS_RUNNING;
 
 	//8.Wiederherstellen des Stackpointers für den Prozessstack des fortzusetzenden Prozesses
-	SP = *(os_processes[currentProc].sp.as_ptr);
+	SP = os_processes[currentProc].sp.as_int;
 
 	//10.Wiederherstellen des Laufzeitkontext und automatischer Ruecksprung
 	restoreContext();
@@ -117,7 +117,7 @@ ISR(TIMER2_COMPA_vect) {
  */
 void idle(void){
 	//in endlossschleife "...." ausgeben 
-	while (true){
+	while (currentProc==0){
 		lcd_clear();
 		lcd_writeProgString(PSTR("...."));
 		delayMs(DEFAULT_OUTPUT_DELAY);
@@ -142,21 +142,25 @@ void idle(void){
 ProcessID os_exec(Program *program, Priority priority) {
 	//ist das hier die richitge stelle???????????????????
 	os_enterCriticalSection();
+
 	//finde den ersten freien platz in Array
 	int first_unused_process = 0;
 	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
+		//falls kein platz frei ist
+		if(i==MAX_NUMBER_OF_PROCESSES){
+			os_leaveCriticalSection();
+			return INVALID_PROCESS;
+		}
 		//erster freier platz
 		if (os_processes[i].state==OS_PS_UNUSED){
 			first_unused_process = i;
 			break;
 		}
-		//falls kein platz frei ist
-		if(i==MAX_NUMBER_OF_PROCESSES){
-			return INVALID_PROCESS;
-		}
+		
 	}
 	//programmzeiger ueberpruefen
 	if (*program==NULL){
+		os_leaveCriticalSection();
 		return INVALID_PROCESS;
 	}
 	//Programm, Prozesszustand und Prozesspriorität speichern
@@ -187,7 +191,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 	}
 	
 	//Pruefsumme des Prozesses initialisieren
-	os_processes[first_unused_process].checksum = StackChecksum(first_unused_process);
+	os_processes[first_unused_process].checksum = os_getStackChecksum(first_unused_process);
 	
 	os_leaveCriticalSection();
 	
@@ -205,7 +209,7 @@ void os_startScheduler(void) {
 	// idle auf Running
 	os_processes[currentProc].state = OS_PS_RUNNING;
 	// Setzen des sp auf den Prozessstack des Leerlaufprozesse
-	SP = *(os_processes[currentProc].sp.as_ptr);
+	SP = os_processes[currentProc].sp.as_int;
 	//Sprung in den Leerlaufprozess mit restoreContext()
 	restoreContext();
 }
@@ -252,13 +256,6 @@ Process *os_getProcessSlot(ProcessID pid) {
  */
 ProcessID os_getCurrentProc(void) {
 	// läuft ein mal über alle Processe drueber bis den gefunden der gerade lauft 
-	for (int i = 0; i <= MAX_NUMBER_OF_PROCESSES;i++){
-		//momentan laufender Prozess
-		if (os_processes[i].state==OS_PS_RUNNING){
-			currentProc = os_processes[i].id;
-			break;
-		}
-	}
     return currentProc;
 }
 
@@ -288,18 +285,21 @@ SchedulingStrategy os_getSchedulingStrategy(void) {
  *  This function supports up to 255 nested critical sections.
  */
 void os_enterCriticalSection(void) {
-	if (verschachtelungsTiefe<=0){
-		os_errorPStr("Zu oft Crit.Sec. verallsen");
-	}
+
 	//save SREG
-	char savedSERG = SREG;
+	char savedSERG = (SREG &0b10000000);
 	// deaktiviere Global Interupt Bit
 	SREG &= 0b01111111;
-	// inkrement verschahtelungstiefe
-	verschachtelungsTiefe+=1;
-	//deaktivieren des Schedulers "Bit OCIE2A im Register TIMSK2 auf den Wert 0 gesetz"
-	TIMSK2 &= ~(1 << OCIE2A);
-	SREG = savedSERG;
+	if (criticalSectionCount>=255){
+		os_error("Zu oft Crit.Sec. betreetn");
+	}
+	else{
+		// inkrement verschahtelungstiefe
+		criticalSectionCount+=1;
+		//deaktivieren des Schedulers "Bit OCIE2A im Register TIMSK2 auf den Wert 0 gesetz"
+		TIMSK2 &= ~(1 << OCIE2A);
+		SREG |= savedSERG;
+	}
 }
 
 /*!
@@ -309,21 +309,25 @@ void os_enterCriticalSection(void) {
  *  has to be reactivated.
  */
 void os_leaveCriticalSection(void){
-	if (verschachtelungsTiefe<=0){
-		os_errorPStr("Zu oft Crit.Sec. verallsen");
-	}
+	
 	//save SREG
-	char savedSERG = SREG;
+	uint8_t savedSERG = (SREG & 0b10000000);
 	// deaktiviere Global Interupt Bit
 	SREG &= 0b01111111;
-	// dekrement verschahtelungstiefe
-	verschachtelungsTiefe-=1;
-	//aktivieren des Schedulers wenn kein critSection mehr
-	if(verschachtelungsTiefe==0){
-		// Setze das Bit OCIE2A im Register TIMSK2 auf 1
-		TIMSK2 |= (1 << OCIE2A);
+	if (criticalSectionCount<=0){
+		os_error("Zu oft Crit.Sec. verallsen");
 	}
-	SREG = savedSERG;
+	else{
+		// dekrement verschahtelungstiefe
+		criticalSectionCount-=1;
+		//aktivieren des Schedulers wenn kein critSection mehr
+		if(criticalSectionCount==0){
+			// Setze das Bit OCIE2A im Register TIMSK2 auf 1
+			TIMSK2 |= (1 << OCIE2A);
+		}
+		SREG |= savedSERG;	
+	}
+	
 }
 
 /*!
@@ -335,7 +339,7 @@ void os_leaveCriticalSection(void){
 StackChecksum os_getStackChecksum(ProcessID pid) {
 	StackChecksum result = 0b00000000;
 	Process process = os_processes[pid];
-	uint8_t *current = process.sp.as_ptr;
+	uint8_t *current = process.sp.as_ptr+1;
 	while ((uint16_t)current<= PROCESS_STACK_BOTTOM(pid)){
 		result= result ^ *current;
 		current ++; 
