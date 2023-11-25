@@ -18,6 +18,12 @@ The file contains five strategies:
 #include <stdlib.h>
 
 /*!
+* glabele var fuer scheduleing ninfos 
+*/
+SchedulingInformation schedulingInfo;
+
+
+/*!
  *  Reset the scheduling information for a specific strategy
  *  This is only relevant for RoundRobin and InactiveAging
  *  and is done when the strategy is changed through os_setSchedulingStrategy
@@ -26,6 +32,15 @@ The file contains five strategies:
  */
 void os_resetSchedulingInformation(SchedulingStrategy strategy) {
     // This is a presence task
+	Process current = *os_getProcessSlot(os_getCurrentProc());
+	if(strategy== OS_SS_ROUND_ROBIN){
+		schedulingInfo.timeslice=current.priority;
+	}
+	if(strategy == OS_SS_INACTIVE_AGING){
+		for(int i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
+			schedulingInfo.age[i]=0;
+		}
+	}
 }
 
 /*!
@@ -37,6 +52,7 @@ void os_resetSchedulingInformation(SchedulingStrategy strategy) {
  */
 void os_resetProcessSchedulingInformation(ProcessID id) {
     // This is a presence task
+	schedulingInfo.age[id]=0;
 }
 
 /*!
@@ -124,8 +140,25 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
  *  \return The next process to be executed determined on the basis of the round robin strategy.
  */
 ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) {
-    // This is a presence task
-    return 0;
+	uint16_t processInReady= 0;
+	// um alle prozesse die ready sind heraus zu finden
+	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
+		if(processes[i].state== OS_PS_READY){
+			processInReady+=1;
+		}
+	}
+	//falls kein Prozess in Ready soll idle
+	if(processInReady == 0){
+		current = 0;
+		return current;
+	}
+   
+	schedulingInfo.timeslice --;
+	if (schedulingInfo.timeslice==0){
+		current = os_Scheduler_Even(processes,current);
+		schedulingInfo.timeslice = processes[current].priority;
+	}
+    return current;
 }
 
 /*!
@@ -140,8 +173,57 @@ ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) 
  *  \return The next process to be executed, determined based on the inactive-aging strategy.
  */
 ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID current) {
+	uint16_t processInReady= 0;
+	// um alle prozesse die ready sind heraus zu finden
+	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
+		if(processes[i].state== OS_PS_READY){
+			processInReady+=1;
+		}
+	}
+	//falls kein Prozess in Ready soll idle
+	if(processInReady == 0){
+		current = 0;
+		return current;
+	}
     // This is a presence task
-    return 0;
+	//schedulingInfo.age[current] += processes[current].priority;
+	for (int i =1; i< MAX_NUMBER_OF_PROCESSES;i++){
+		schedulingInfo.age[i] += processes[i].priority;
+	}
+	
+	ProcessID oldest=1;
+	for(int i =1; i<MAX_NUMBER_OF_PROCESSES;i++){
+		//falls kleiner als mom aeltester 
+		if(processes[i].state!= OS_PS_UNUSED){
+			if(schedulingInfo.age[oldest]< schedulingInfo.age[i]){
+				oldest = i;
+			}
+			//falls gleich alt
+			if(schedulingInfo.age[oldest]== schedulingInfo.age[i]){
+				//falls prio groesser
+				if (processes[oldest].priority< processes[i].priority){
+					oldest = i;
+				}
+				// falls prio glecih
+				else if (processes[oldest].priority== processes[i].priority){
+					//falls id kleiner als odlest 
+					if (oldest>i){
+						oldest = i;
+					}
+				}
+			}
+		}
+	}
+	/*
+	for (int i =1; i< MAX_NUMBER_OF_PROCESSES;i++){
+		schedulingInfo.age[i] += processes[i].priority;
+		if(i==oldest){
+			schedulingInfo.age[i]=0;
+		}
+	}
+	*/
+	schedulingInfo.age[oldest]=0;
+    return oldest;
 }
 
 /*!
@@ -155,5 +237,21 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
  */
 ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID current) {
     // This is a presence task
-    return 0;
+	uint16_t processInReady= 0;
+	// um alle prozesse die ready sind heraus zu finden
+	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
+		if(processes[i].state== OS_PS_READY){
+			processInReady+=1;
+		}
+	}
+	//falls kein Prozess in Ready soll idle
+	if(processInReady == 0){
+		current = 0;
+		return current;
+	}
+	
+	if(processes[current].state == OS_PS_UNUSED){
+		current = os_Scheduler_Even(processes,current);
+	}
+    return current;
 }

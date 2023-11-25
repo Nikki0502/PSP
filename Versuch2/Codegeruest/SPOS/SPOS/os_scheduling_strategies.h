@@ -38,4 +38,9 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
 //! RunToCompletion strategy
 ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID current);
 
+typedef struct{
+	uint16_t timeslice;
+	Age age[MAX_NUMBER_OF_PROCESSES]; 
+}SchedulingInformation;
+
 #endif

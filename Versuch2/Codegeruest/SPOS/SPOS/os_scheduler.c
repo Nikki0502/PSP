@@ -94,8 +94,10 @@ ISR(TIMER2_COMPA_vect) {
 	switch(os_getSchedulingStrategy()){
 		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
 		case OS_SS_EVEN : currentProc = os_Scheduler_Even(os_processes, currentProc);break;
-		//keine lust das für die andern zu machen gerade und so macht das keine fehlermeldung
-		default : currentProc = 0;break;
+		case OS_SS_INACTIVE_AGING : currentProc = os_Scheduler_InactiveAging(os_processes,currentProc);break;
+		case OS_SS_ROUND_ROBIN: currentProc = os_Scheduler_RoundRobin(os_processes,currentProc); break;
+		case OS_SS_RUN_TO_COMPLETION: currentProc = os_Scheduler_RunToCompletion(os_processes,currentProc); break;
+		//default : currentProc = 0;break;
 	}
 	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){
 		os_error("Pruefsumme falchs");
@@ -168,6 +170,8 @@ ProcessID os_exec(Program *program, Priority priority) {
 	os_processes[first_unused_process].program = *program;//program
 	os_processes[first_unused_process].priority = priority;
 	os_processes[first_unused_process].id = first_unused_process;
+	//ka ob das hier hin soll aber tristan sagt ja lol ey 
+	os_resetProcessSchedulingInformation(first_unused_process);
 	
 	//Prozessstack vorbereiten
 	//neuen Prozess definieren(einfacher zum tippen)
@@ -266,6 +270,7 @@ ProcessID os_getCurrentProc(void) {
  */
 void os_setSchedulingStrategy(SchedulingStrategy strategy){
 	currentSchedulingStrategy = strategy;
+	os_resetSchedulingInformation(currentSchedulingStrategy);
 }
 
 /*!
