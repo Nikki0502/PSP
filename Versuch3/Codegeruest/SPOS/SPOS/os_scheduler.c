@@ -167,7 +167,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 	}
 	//Programm, Prozesszustand und Prozesspriorität speichern
 	os_processes[first_unused_process].state = OS_PS_READY;
-	os_processes[first_unused_process].program = *program;//program
+	os_processes[first_unused_process].program = os_dispatcher(program);//program
 	os_processes[first_unused_process].priority = priority;
 	os_processes[first_unused_process].id = first_unused_process;
 	//ka ob das hier hin soll aber tristan sagt ja lol ey 
@@ -350,4 +350,29 @@ StackChecksum os_getStackChecksum(ProcessID pid) {
 		current ++; 
 	}
 	return result;
+}
+
+void os_dispatcher(void){
+	ProcessID id = currentProc;//ID von aktuellem Prozess bestimmen
+	Program *program = os_processes[id].program; //zugehörigen Funktionszeiger bestimmen
+	program();//Programm ausführen
+	os_kill(id);
+}
+
+bool os_kill(ProcessID pid){
+	if(pid==0){
+		//maybe noch nen error hier
+		return false;
+	}
+	//reicht das zum aufräumen?
+	os_processes[pid].state = OS_PS_UNUSED;
+	os_processes[pid].program = NULL;
+	while(currentProc == pid){}
+		os_leaveCriticalSection(); //?
+	if( (pid < MAX_NUMBER_OF_PROCESSES) && (pid != 0) ) {
+		return true
+	}
+	else {
+		return false;
+	}
 }
