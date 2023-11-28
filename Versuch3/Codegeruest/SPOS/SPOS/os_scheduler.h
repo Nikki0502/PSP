@@ -67,4 +67,10 @@ void os_enterCriticalSection(void);
 //! Leaves a critical code section
 void os_leaveCriticalSection(void);
 
+//! dispatches Program
+void os_dispatcher(void);
+
+//! Kills Programm
+bool os_kill(ProcessID pid);
+
 #endif

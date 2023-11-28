@@ -84,9 +84,10 @@ ISR(TIMER2_COMPA_vect) {
 	
 
 	//5.Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
-	os_processes[currentProc].state = OS_PS_READY;
-	
-	//WO GENAU SOLL DIE CHECKSUM ABGESPEICHERT WERDEN?UND SPÄTER WIEDER VERGLICHEN WERDEN
+	//ausser das programm terminiert
+	if (os_processes[currentProc].state != OS_PS_UNUSED){
+		os_processes[currentProc].state = OS_PS_READY;
+	}
 	//Speichern der Prüfsumme auf den Schedulerstack
 	os_processes[currentProc].checksum = os_getStackChecksum(currentProc);
 	
@@ -97,8 +98,8 @@ ISR(TIMER2_COMPA_vect) {
 		case OS_SS_INACTIVE_AGING : currentProc = os_Scheduler_InactiveAging(os_processes,currentProc);break;
 		case OS_SS_ROUND_ROBIN: currentProc = os_Scheduler_RoundRobin(os_processes,currentProc); break;
 		case OS_SS_RUN_TO_COMPLETION: currentProc = os_Scheduler_RunToCompletion(os_processes,currentProc); break;
-		//default : currentProc = 0;break;
 	}
+	//falls pruefsumme nicht mehr gleich ist
 	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){
 		os_error("Pruefsumme falchs");
 	}
@@ -142,7 +143,7 @@ void idle(void){
  *          defines.h on failure
  */
 ProcessID os_exec(Program *program, Priority priority) {
-	//ist das hier die richitge stelle???????????????????
+	//Anfang Crit Section
 	os_enterCriticalSection();
 
 	//finde den ersten freien platz in Array
@@ -165,30 +166,31 @@ ProcessID os_exec(Program *program, Priority priority) {
 		os_leaveCriticalSection();
 		return INVALID_PROCESS;
 	}
+	
 	//Programm, Prozesszustand und Prozesspriorität speichern
 	os_processes[first_unused_process].state = OS_PS_READY;
-	os_processes[first_unused_process].program = os_dispatcher(program);//program
+	os_processes[first_unused_process].program = program;
 	os_processes[first_unused_process].priority = priority;
 	os_processes[first_unused_process].id = first_unused_process;
-	//ka ob das hier hin soll aber tristan sagt ja lol ey 
+	
+	//SchedulingInfo reseten
 	os_resetProcessSchedulingInformation(first_unused_process);
 	
 	//Prozessstack vorbereiten
 	//neuen Prozess definieren(einfacher zum tippen)
 	Process newProcess = os_processes[first_unused_process];
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
-	
 	os_processes[first_unused_process].sp.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
-	uint16_t programadress = (uint16_t)program;
-	
+	//1.os dispatcher als ruecksprung adresse 
+	uint16_t programadress = (uint16_t)*os_dispatcher();// ka wie man das hier richtig macht FRAGE
 	uint8_t lowbyte = (uint8_t)programadress;
 	uint8_t highbyte = (uint8_t)(programadress >> 8);
-	
+	//ruecksprung addresse als low und highbyte ganz oben auf den stack
 	*(os_processes[first_unused_process].sp.as_ptr) = lowbyte;
 	os_processes[first_unused_process].sp.as_ptr --;
 	*(os_processes[first_unused_process].sp.as_ptr) = highbyte;
 	os_processes[first_unused_process].sp.as_ptr --;
-	
+	//33 leere Reg
 	for(int i = 0; i < 33; i++){
 		*(os_processes[first_unused_process].sp.as_ptr) = 0x00;
 		os_processes[first_unused_process].sp.as_ptr --;
@@ -197,6 +199,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 	//Pruefsumme des Prozesses initialisieren
 	os_processes[first_unused_process].checksum = os_getStackChecksum(first_unused_process);
 	
+	//Crit Sect verlassen
 	os_leaveCriticalSection();
 	
 	return newProcess.id;
@@ -233,10 +236,6 @@ void os_initScheduler(void){
 	
 	//solange in der Liste ein Element ist 
 	while (autostart_head != NULL){
-		//falls ein Programm zum auto starten markiet ist 
-		//if(true){
-			//os_exec(autostart_head->program, DEFAULT_PRIORITY);
-		//}
 		os_exec(autostart_head->program, DEFAULT_PRIORITY);
 		// naestes programm in autostart_head
 		autostart_head = autostart_head->next;
@@ -345,6 +344,7 @@ StackChecksum os_getStackChecksum(ProcessID pid) {
 	StackChecksum result = 0b00000000;
 	Process process = os_processes[pid];
 	uint8_t *current = process.sp.as_ptr+1;
+	//alle eintraege im Stack verxorn
 	while ((uint16_t)current<= PROCESS_STACK_BOTTOM(pid)){
 		result= result ^ *current;
 		current ++; 
@@ -352,27 +352,38 @@ StackChecksum os_getStackChecksum(ProcessID pid) {
 	return result;
 }
 
+/*!
+ *	Kapselung der Anwendungsfunktion
+ */
 void os_dispatcher(void){
-	ProcessID id = currentProc;//ID von aktuellem Prozess bestimmen
-	Program *program = os_processes[id].program; //zugehörigen Funktionszeiger bestimmen
-	program();//Programm ausführen
-	os_kill(id);
+	//1. Ruecksprungadresse ist nun immer der dispatcher 
+	//2. Process Id des Current und Programm* des Current
+	Program currentProg = os_processes[currentProc].program;
+	//3. aufruf des current Programs
+	currentProg();
+	//4. Programm abgearbeitet kehrt wieder hier zurueck 
+	//5. Process auf Unused und nicht im Scheduler wieder auf Ready(siehe Scheduler Step 5.)
+	// maybe hier in Critsection um sicher zu gehen FRAGE
+	//os_processes[currentProc].state = OS_PS_RUNNING;
+	os_kill(currentProc);
 }
 
+/*!
+ * Kills the Programm trough the TaskMan or other Processes
+ * \pram pid The Id of the process which the function kills
+ * \return Bool if succesfull or not
+ */
 bool os_kill(ProcessID pid){
-	if(pid==0){
-		//maybe noch nen error hier
+	// Versuchte Term des Idle
+	if(pid==0 || pid>= MAX_NUMBER_OF_PROCESSES){
 		return false;
 	}
-	//reicht das zum aufräumen?
-	os_processes[pid].state = OS_PS_UNUSED;
-	os_processes[pid].program = NULL;
-	while(currentProc == pid){}
-		os_leaveCriticalSection(); //?
-	if( (pid < MAX_NUMBER_OF_PROCESSES) && (pid != 0) ) {
-		return true
-	}
-	else {
-		return false;
-	}
+	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
+	// Aufraeumen des Processes
+	os_processes[pid].state = OS_PS_UNUSED;//sollte Denke ich reichen
+	
+	// Selbst Terminierung
+	// nicht verlassen werden darf bis naechter Proc durch Scheduler
+	while(pid==currentProc){}
+	return true;
 }
