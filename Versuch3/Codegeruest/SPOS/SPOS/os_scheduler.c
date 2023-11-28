@@ -374,13 +374,14 @@ void os_dispatcher(void){
  * \return Bool if succesfull or not
  */
 bool os_kill(ProcessID pid){
-	// Versuchte Term des Idle
+	// Versuchte Term des Idle oder falsche pid
 	if(pid==0 || pid>= MAX_NUMBER_OF_PROCESSES){
 		return false;
 	}
 	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;//sollte Denke ich reichen
+	// vllt noch heap oder aufräumen
 	
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler
