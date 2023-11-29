@@ -11,23 +11,18 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-//Globale Var
+//Driver intSRAM init 
 MemDriver intSRAM__ = {
-	.addr_start = AVR_SRAM_START;
-	.addr_end = AVR_SRAM_END;
-	.init()=&init();
-	.read()=&read();
-	.write()=&write();
-	.name = "SRAMi";
-	.addr_curr = AVR_SRAM_LAST;
-	};
+	.startAddr = AVR_SRAM_START,
+	.endAddr = AVR_SRAM_END,
+	.currAddr = AVR_SRAM_LAST,
+	.remainingBytesInSRAM =AVR_MEMORY_SRAM,
+	.name = "SRAM",
+	.init = &init,
+	.read = &read,
+	.write = &write
+};
 	
-
-
-
-
-
-
 //Funktionen des MemDriver-Types(init,read,write)
 
 void init(void){	

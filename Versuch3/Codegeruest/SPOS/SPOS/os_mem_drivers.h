@@ -22,13 +22,14 @@ MemValue read(MemAddr addr);
 void write(MemAddr addr , MemValue value);
 
 typedef struct{
-	MemAddr addr_start;
-	MemAddr addr_end;
+	MemAddr startAddr;
+	MemAddr endAddr;
+	MemAddr currAddr;
+	uint16_t remainingBytesInSRAM;
+	char name[];
 	void (*init)();
 	MemValue(*read)(MemAddr);
 	void (*write)(MemAddr,MemValue);
-	char name[];
-	MemAddr addr_curr;
 }MemDriver;
 
 #define intSRAM *intSRAM__
