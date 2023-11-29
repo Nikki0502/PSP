@@ -6,6 +6,7 @@
  */ 
 
 #include "os_memheap_drivers.h"
+#include "atmega644constants.h"
 #include "util.h"
 #include "defines.h"
 

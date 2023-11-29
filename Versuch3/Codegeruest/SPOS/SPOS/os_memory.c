@@ -5,6 +5,7 @@
  *  Author: nikum
  */ 
 #include "os_memory.h"
+#include "atmega644constants.h"
 #include "util.h"
 #include "defines.h"
 

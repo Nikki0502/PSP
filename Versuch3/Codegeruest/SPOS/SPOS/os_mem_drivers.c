@@ -5,6 +5,7 @@
  *  Author: nikum
  */ 
 #include "os_mem_drivers.h"
+#include "atmega644constants.h"
 #include "util.h"
 #include "defines.h"
 
@@ -25,15 +26,15 @@ MemDriver intSRAM__ = {
 	
 //Funktionen des MemDriver-Types(init,read,write)
 
-void init(void){	
+static void init(void){	
 }
 
-MemValue read(MemAddr addr){
+static MemValue read(MemAddr addr){
 	MemValue value = *addr;
 	return value;
 }
 
-void write(MemAddr addr , MemValue value){
+static void write(MemAddr addr , MemValue value){
 	*addr = value;
 }
 

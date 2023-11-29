@@ -17,11 +17,11 @@ typedef uint8_t MemValue;
 
 //Funktionen
 
-void init(void);
+static void init(void);
 
-MemValue read(MemAddr addr);
+static MemValue read(MemAddr addr);
 
-void write(MemAddr addr , MemValue value);
+static void write(MemAddr addr , MemValue value);
 
 //Driver
 
