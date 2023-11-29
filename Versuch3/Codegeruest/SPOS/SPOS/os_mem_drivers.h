@@ -15,11 +15,23 @@ typedef uint16_t MemAddr;
 
 typedef uint8_t MemValue;
 
+void init(void);
+
+MemValue read(MemAddr addr);
+
+void write(MemAddr addr , MemValue value);
+
 typedef struct{
+	MemAddr addr_start;
+	MemAddr addr_end;
+	void (*init)();
+	MemValue(*read)(MemAddr);
+	void (*write)(MemAddr,MemValue);
+	char name[];
+	MemAddr addr_curr;
 }MemDriver;
 
-#define intSRAM 
-
+#define intSRAM *intSRAM__
 
 
 #endif /* OS_MEM_DRIVERS_H_ */
