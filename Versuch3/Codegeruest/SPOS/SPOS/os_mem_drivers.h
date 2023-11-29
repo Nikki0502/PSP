@@ -15,11 +15,15 @@ typedef uint16_t MemAddr;
 
 typedef uint8_t MemValue;
 
+//Funktionen
+
 void init(void);
 
 MemValue read(MemAddr addr);
 
 void write(MemAddr addr , MemValue value);
+
+//Driver
 
 typedef struct{
 	MemAddr startAddr;
@@ -31,6 +35,8 @@ typedef struct{
 	MemValue(*read)(MemAddr);
 	void (*write)(MemAddr,MemValue);
 }MemDriver;
+
+//intSRAM Pointer
 
 #define intSRAM *intSRAM__
 

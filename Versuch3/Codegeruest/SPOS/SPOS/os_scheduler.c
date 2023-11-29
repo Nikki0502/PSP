@@ -182,7 +182,7 @@ ProcessID os_exec(Program *program, Priority priority) {
 	//Rücksprungadresse speichern und aufteilen in 2 Byte
 	os_processes[first_unused_process].sp.as_int = PROCESS_STACK_BOTTOM(first_unused_process);
 	//1.os dispatcher als ruecksprung adresse 
-	uint16_t programadress = (uint16_t)*os_dispatcher();// ka wie man das hier richtig macht FRAGE
+	uint16_t programadress = (uint16_t)os_dispatcher;
 	uint8_t lowbyte = (uint8_t)programadress;
 	uint8_t highbyte = (uint8_t)(programadress >> 8);
 	//ruecksprung addresse als low und highbyte ganz oben auf den stack
