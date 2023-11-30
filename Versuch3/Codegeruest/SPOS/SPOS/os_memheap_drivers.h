@@ -8,12 +8,27 @@
 
 #ifndef OS_MEMHEAP_DRIVERS_H_
 #define OS_MEMHEAP_DRIVERS_H_
+#include "os_mem_drivers.h"
 
 //Datentypen
 
-typedef struct{}Heap;
-typedef enum{}AllocStrategy;
-#define intHeap 
+typedef struct{
+	MemDriver *driver;
+	uint16_t startaddrMap;
+	uint16_t startaddrUse;
+	uint16_t endHeap;
+	AllocStrategy currentStrat;
+	char *name[];
+	}Heap;
+	
+typedef enum{
+	OS_MEM_FIRST,
+	OS_MEM_NEXT,
+	OS_MEM_BEST,
+	OS_MEM_WORST
+	}AllocStrategy;
+	
+#define intHeap (&intHeap__) 
 
 void os_initHeaps(void);
 uint8_t os_getHeapListLenght(void);

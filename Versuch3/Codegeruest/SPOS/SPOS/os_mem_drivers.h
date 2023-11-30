@@ -38,7 +38,7 @@ typedef struct{
 
 //intSRAM Pointer
 
-#define intSRAM *intSRAM__
+#define intSRAM (&intSRAM__)
 
 
 #endif /* OS_MEM_DRIVERS_H_ */
