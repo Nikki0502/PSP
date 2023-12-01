@@ -31,7 +31,7 @@ void os_initHeaps(void){
 		intHeap__.driver->write(i,0);
 	}
 }
-uint8_t os_getHeapListLenght(void){
+size_t os_getHeapListLength(void){
 	return 1;
 }
 Heap* os_lookupHeap(uint8_t index){

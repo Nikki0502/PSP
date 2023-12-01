@@ -29,7 +29,7 @@ uint16_t os_getChunkSize(Heap const* heap, MemAddr addr);
 
 void os_setAllocationStrategy(Heap* heap, AllocStrategy allocStrat);
 
-AllocStrategy os_getAllocationStrategy(Heap* const* heap);
+AllocStrategy os_getAllocationStrategy(Heap const* heap);
 
 void setLowNibble (const Heap *heap, MemAddr addr, MemValue value);
 

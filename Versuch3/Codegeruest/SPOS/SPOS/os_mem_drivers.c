@@ -12,6 +12,22 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
+//Funktionen des MemDriver-Types(init,read,write)
+
+static void init(void){
+}
+
+static MemValue read(MemAddr addr){
+	uint8_t *pointer = (uint8_t*)&addr;
+	MemValue value = *pointer;
+	return value;
+}
+
+static void write(MemAddr addr , MemValue value){
+	uint8_t *pointer = (uint8_t*)&addr;
+	*pointer = value;
+}
+
 //Driver intSRAM init 
 MemDriver intSRAM__ = {
 	.startAddr = AVR_SRAM_START,
@@ -24,18 +40,5 @@ MemDriver intSRAM__ = {
 	.write = &write
 };
 	
-//Funktionen des MemDriver-Types(init,read,write)
-
-static void init(void){	
-}
-
-static MemValue read(MemAddr addr){
-	MemValue value = *addr;
-	return value;
-}
-
-static void write(MemAddr addr , MemValue value){
-	*addr = value;
-}
 
 

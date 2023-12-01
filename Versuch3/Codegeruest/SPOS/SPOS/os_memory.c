@@ -9,6 +9,7 @@
 #include "util.h"
 #include "defines.h"
 #include "os_scheduler.h"
+#include "os_memheap_drivers.h"
 
 
 #include <avr/interrupt.h>

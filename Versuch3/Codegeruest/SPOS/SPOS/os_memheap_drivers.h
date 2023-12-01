@@ -11,6 +11,12 @@
 #include "os_mem_drivers.h"
 
 //Datentypen
+typedef enum{
+	OS_MEM_FIRST,
+	OS_MEM_NEXT,
+	OS_MEM_BEST,
+	OS_MEM_WORST
+}AllocStrategy;
 
 typedef struct{
 	MemDriver *driver;
@@ -18,20 +24,13 @@ typedef struct{
 	MemAddr startaddrUse;
 	MemAddr endHeap;
 	AllocStrategy currentStrat;
-	char *name[];
+	char *name;
 	}Heap;
-	
-typedef enum{
-	OS_MEM_FIRST,
-	OS_MEM_NEXT,
-	OS_MEM_BEST,
-	OS_MEM_WORST
-	}AllocStrategy;
 	
 #define intHeap (&intHeap__) 
 
 void os_initHeaps(void);
-uint8_t os_getHeapListLenght(void);
+size_t os_getHeapListLength(void);
 Heap* os_lookupHeap(uint8_t index);
 
 
