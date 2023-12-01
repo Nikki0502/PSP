@@ -14,9 +14,9 @@
 
 typedef struct{
 	MemDriver *driver;
-	uint16_t startaddrMap;
-	uint16_t startaddrUse;
-	uint16_t endHeap;
+	MemAddr startaddrMap;
+	MemAddr startaddrUse;
+	MemAddr endHeap;
 	AllocStrategy currentStrat;
 	char *name[];
 	}Heap;

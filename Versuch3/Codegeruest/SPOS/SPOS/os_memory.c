@@ -10,27 +10,67 @@
 #include "defines.h"
 #include "os_scheduler.h"
 
+
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
 //Funktionen
 MemAddr os_malloc(Heap* heap, uint16_t size){
 	os_enterCriticalSection();
-	
+	MemAddr freeAddrUser;
+	switch (os_getAllocationStrategy(heap)){
+		case OS_MEM_FIRST: freeAddrUser = os_Memory_FirstFit(heap,(size_t)size); break;
+		default: freeAddrUser= 0;
+	}
+	if(freeAddrUser==0){
+		return 0;
+	}
+	MemAddr freeAddrMap = os_getMapStart() + ((freeAddrUser - os_getUseStart())/2);
+	bool highNible =(freeAddrUser - os_getUseStart())%2==0;
+	// markiern von Map
+	for(uint16_t i = 0; i< size; i++){
+		if(i==0){
+			if(highNible){
+				setHighNibble(heap,freeAddrMap,os_getCurrentProc());
+				highNible = false;
+			}
+			else{
+				setLowNibble(heap,freeAddrMap,os_getCurrentProc());
+				highNible = true;
+			}
+		}
+		else{
+			if(highNible){
+				setHighNibble(heap,freeAddrMap,(MemValue)0xF);
+				highNible = false;
+			}
+			else{
+				setLowNibble(heap,freeAddrMap,(MemValue)0xF);
+				highNible = true;
+			}
+		}
+		if(highNible == false){
+			freeAddrMap +=1;
+		}
+	}
+	return freeAddrUser;
 	os_leaveCriticalSection();
 }
 	
 void os_free(Heap* heap, MemAddr addr){
 	os_enterCriticalSection();
+	MemAddr usedAddrMap = (addr -os_getUseStart())/2;
+	bool highNible =(addr-os_getUseStart())%2==0;
+	while()
 	os_leaveCriticalSection();
 }
 	
 size_t os_getUseSize(Heap const* heap){
-	return heap->endHeap - heap->startaddrUse;
+	return (size_t)(heap->endHeap - heap->startaddrUse);
 }
 
 size_t os_getMapSize(Heap const* heap){
-	return heap->startaddrUse - heap->startaddrMap;
+	return (size_t)(heap->startaddrUse - heap->startaddrMap);
 }
 
 MemAddr os_getMapStart(Heap const* heap){
@@ -76,6 +116,21 @@ MemValue getLowNibble (const Heap *heap, MemAddr addr){
 
 MemValue getHighNibble (const Heap *heap, MemAddr addr){
 	return (heap->driver->read(addr)>>4);
+}
+
+MemAddr os_getMapAddr(const Heap *heap, MemAddr addr){
+	return os_getMapStart() + ((addr - os_getUseStart())/2);
+}
+
+void os_setMapAddr(const Heap *heap, MemAddr addr, MemValue value){
+	MemAddr freeAddrMap = os_getMapStart() + ((addr - os_getUseStart())/2);
+	bool highNible =(addr - os_getUseStart())%2==0;
+	if(highNible){
+		setHighNibble(heap,freeAddrMap,value);
+	}
+	else{
+		setLowNibble(heap,freeAddrMap,value);
+	}
 }
 
 	

@@ -18,9 +18,9 @@
 //Globale Variable
 Heap intHeap__= {
 		.driver = intSRAM,
-		.startaddrMap = 0x100 + HEAPOFFSET ,
-		.startaddrUse = (((BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8)-0x100 + HEAPOFFSET)/3)+(0x100 + HEAPOFFSET),
-		.endHeap= BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8 ,
+		.startaddrMap = (MemAddr) (0x100 + HEAPOFFSET) ,
+		.startaddrUse = (MemAddr)(((BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8)-0x100 + HEAPOFFSET)/3)+(0x100 + HEAPOFFSET),
+		.endHeap= (MemAddr)(BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8) ,
 		.currentStrat = OS_MEM_FIRST,
 		.name = "HEAP"
 	};
