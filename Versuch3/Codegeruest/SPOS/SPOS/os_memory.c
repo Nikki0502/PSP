@@ -10,122 +10,61 @@
 #include "defines.h"
 #include "os_scheduler.h"
 #include "os_memheap_drivers.h"
-
+#include "os_core.h"
+#include "os_memory_strategies.h"
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-//Funktionen
-MemAddr os_malloc(Heap* heap, uint16_t size){
-	os_enterCriticalSection();
-	MemAddr freeAddrUser;
-	switch (os_getAllocationStrategy(heap)){
-		case OS_MEM_FIRST: freeAddrUser = os_Memory_FirstFit(heap,(size_t)size); break;
-		default: freeAddrUser= 0;
-	}
-	if(freeAddrUser==0){
-		return 0;
-	}
-	MemAddr freeAddrMap = os_getMapStart() + ((freeAddrUser - os_getUseStart())/2);
-	bool highNible =(freeAddrUser - os_getUseStart())%2==0;
-	// markiern von Map
-	for(uint16_t i = 0; i< size; i++){
-		if(i==0){
-			if(highNible){
-				setHighNibble(heap,freeAddrMap,os_getCurrentProc());
-				highNible = false;
-			}
-			else{
-				setLowNibble(heap,freeAddrMap,os_getCurrentProc());
-				highNible = true;
-			}
-		}
-		else{
-			if(highNible){
-				setHighNibble(heap,freeAddrMap,(MemValue)0xF);
-				highNible = false;
-			}
-			else{
-				setLowNibble(heap,freeAddrMap,(MemValue)0xF);
-				highNible = true;
-			}
-		}
-		if(highNible == false){
-			freeAddrMap +=1;
-		}
-	}
-	return freeAddrUser;
-	os_leaveCriticalSection();
-}
-	
-void os_free(Heap* heap, MemAddr addr){
-	os_enterCriticalSection();
-	MemAddr usedAddrMap = (addr -os_getUseStart())/2;
-	bool highNible =(addr-os_getUseStart())%2==0;
-	while()
-	os_leaveCriticalSection();
-}
-	
-size_t os_getUseSize(Heap const* heap){
-	return (size_t)(heap->endHeap - heap->startaddrUse);
-}
 
-size_t os_getMapSize(Heap const* heap){
-	return (size_t)(heap->startaddrUse - heap->startaddrMap);
-}
-
-MemAddr os_getMapStart(Heap const* heap){
-	return heap->startaddrMap;
-}
-
-MemAddr os_getUseStart(Heap const* heap){
-	return heap->startaddrUse;
-}
-
-	
-uint16_t os_getChunkSize(Heap const* heap, MemAddr addr){
-}
-	
-void os_setAllocationStrategy(Heap* heap, AllocStrategy allocStrat){
-	heap->currentStrat = allocStrat;
-}
-
-	
-AllocStrategy os_getAllocationStrategy(Heap* const* heap){
-	return heap->currentStrat;
-}
-	
+/*
+ * Nible Management
+ */
 void setLowNibble (const Heap *heap, MemAddr addr, MemValue value){
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
-		//*addr = (0b11110000 & *addr);
-		//*addr |= (0b00001111 & value);
-		heap->driver->write(addr,(getHighNibble(addr)<<4)+value));
+		heap->driver->write(addr, (getHighNibble(heap,addr)<<4) + value);
 	}
 }
 
 void setHighNibble (const Heap *heap, MemAddr addr, MemValue value){
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
-		//*addr = (0b000011111 & *addr);
-		//*addr |= (value<<4);
-		heap->driver->write(addr,(getLowNibble(addr)+(value<<4)));
+		heap->driver->write(addr, (getLowNibble(heap,addr) + (value<<4)));
 	}
 }
 
 MemValue getLowNibble (const Heap *heap, MemAddr addr){
-	return (heap->driver->read(addr)&0b00001111);
+	return (heap->driver->read(addr) & 0b00001111);
 }
 
 MemValue getHighNibble (const Heap *heap, MemAddr addr){
 	return (heap->driver->read(addr)>>4);
 }
 
-MemAddr os_getMapAddr(const Heap *heap, MemAddr addr){
-	return os_getMapStart() + ((addr - os_getUseStart())/2);
-}
 
-void os_setMapAddr(const Heap *heap, MemAddr addr, MemValue value){
-	MemAddr freeAddrMap = os_getMapStart() + ((addr - os_getUseStart())/2);
-	bool highNible =(addr - os_getUseStart())%2==0;
+
+
+/*
+ *	Map Management
+ */
+
+//Size of the Map
+size_t os_getMapSize(const Heap* heap){
+	return (size_t)(os_getUseStart(heap) - os_getMapStart(heap));
+}
+//Start of the Map
+MemAddr os_getMapStart(const Heap* heap){
+	return heap->startaddrMap;
+}
+//Returns the Addr of the Map corresponding to the Useraddr
+MemAddr os_getMapAddr(const Heap *heap, MemAddr userAddr){
+	return os_getMapStart(heap) + ((userAddr - os_getUseStart(heap))/2);
+}
+//Set a Vaule for the MapAddr corresponding to the UserAddr
+void os_setMapAddrValue(const Heap *heap, MemAddr userAddr, MemValue value){
+	MemAddr freeAddrMap = os_getMapAddr(heap,userAddr);
+	// checks if high or low nibble 
+	bool highNible =(userAddr - os_getUseStart(heap))%2==0;
 	if(highNible){
 		setHighNibble(heap,freeAddrMap,value);
 	}
@@ -133,5 +72,137 @@ void os_setMapAddr(const Heap *heap, MemAddr addr, MemValue value){
 		setLowNibble(heap,freeAddrMap,value);
 	}
 }
+//Gets the Value of a Map Nibble for a UserAddr
+MemValue os_getMapEntry (const Heap *heap, MemAddr userAddr){
+	MemAddr mapAddr = os_getMapAddr(heap,userAddr);
+	bool highNible =(userAddr - os_getUseStart(heap))%2==0;
+	if(highNible){
+		return getHighNibble(heap,mapAddr);
+	}
+	else{
+		return getLowNibble(heap,mapAddr);
+	}
+}
+
+
+
+/*
+ * User Management
+ */
+
+size_t os_getUseSize(const Heap *heap){
+	return (size_t)(heap->endHeap - heap->startaddrUse);
+}
+MemAddr os_getUseStart(const Heap *heap){
+	return heap->startaddrUse;
+}
+
+
+/*
+ * Chunk Management
+ */
+MemAddr os_getFirstByteOfChunk (const Heap *heap, MemAddr userAddr){
+	while(os_getMapEntry(heap, userAddr) == 0x0F){
+		userAddr -=1;
+	}	
+	return userAddr;
+}
+uint16_t os_getChunkSize(const Heap *heap, MemAddr userAddr){
+	MemAddr currentAddrChunk = os_getFirstByteOfChunk(heap,userAddr);
+	currentAddrChunk +=1;
+	uint16_t size = 0;
+	while(os_getMapEntry(heap,currentAddrChunk) == 0x0F){
+		size +=1;
+		currentAddrChunk +=1;
+	}
+	return size;
+}
+
+
+
+
+/*
+ * Alloc Strat
+ */
+
+void os_setAllocationStrategy(Heap *heap, AllocStrategy allocStrat){
+	heap->currentStrat = allocStrat;
+}
+
+
+AllocStrategy os_getAllocationStrategy(const Heap *heap){
+	AllocStrategy currentStrat= heap->currentStrat;
+	return currentStrat;
+}
+
+
+
+/*
+ * Malloc and Free
+ */
+
+MemAddr os_malloc(Heap* heap, uint16_t size){
+	os_enterCriticalSection();
+	// finden der ersten freien Addr im Userbereich
+	MemAddr freeAddrUser;
+	switch (os_getAllocationStrategy(heap)){
+		case OS_MEM_FIRST: freeAddrUser = os_Memory_FirstFit(heap,(size_t)size); break;
+		default: freeAddrUser= 0;
+	}
+	//falls keine frei ist
+	if(freeAddrUser==0){
+		return 0;
+	}
+	//Map anpassen 
+	os_setMapAddrValue(heap,freeAddrUser,os_getCurrentProc());
+	for (uint16_t i =1; i<size;i++){
+		os_setMapAddrValue(heap,(freeAddrUser + i),0xF);
+	}
+	return freeAddrUser;
+	os_leaveCriticalSection();
+}
+	
+void os_free(Heap* heap, MemAddr addr){
+	os_enterCriticalSection();
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);
+	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
+	//versucht speicher von anderen Process frei zugeben
+	if(os_getMapEntry(heap,startOfChunk)!=os_getCurrentProc()){
+		os_error("os_free:not the right MemChunk");
+	}
+	else{
+		os_setMapAddrValue(heap,startOfChunk,0);
+		for (uint16_t i =1; i < sizeOfChunk ; i++){
+			os_setMapAddrValue(heap,(startOfChunk + i),0);
+		}
+	}
+	os_leaveCriticalSection();
+}
+
+
+void os_freeProcessMemory (Heap *heap, ProcessID pid){
+	uint16_t index = 0;
+	while(os_getMapEntry(heap,os_getUseStart(heap)+ index)!= pid && index < os_getUseSize(heap)){
+		index +=1;
+	}
+	if(os_getMapEntry(heap,os_getUseStart(heap)+ index)== pid){
+		os_free(heap,(os_getUseStart(heap)+ index));
+	}
+	
+}
+
+
+	
+
+
+
+
+
+
+	
+	
+
+
+
 
 	

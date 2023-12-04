@@ -358,13 +358,10 @@ StackChecksum os_getStackChecksum(ProcessID pid) {
 void os_dispatcher(void){
 	//1. Ruecksprungadresse ist nun immer der dispatcher 
 	//2. Process Id des Current und Programm* des Current
-	Program currentProg = os_processes[currentProc].program;
 	//3. aufruf des current Programs
-	currentProg();
+	(*os_processes[currentProc].program)();
 	//4. Programm abgearbeitet kehrt wieder hier zurueck 
 	//5. Process auf Unused und nicht im Scheduler wieder auf Ready(siehe Scheduler Step 5.)
-	// maybe hier in Critsection um sicher zu gehen FRAGE
-	//os_processes[currentProc].state = OS_PS_RUNNING;
 	os_kill(currentProc);
 }
 

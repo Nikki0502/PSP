@@ -9,6 +9,8 @@
 #ifndef OS_MEMHEAP_DRIVERS_H_
 #define OS_MEMHEAP_DRIVERS_H_
 #include "os_mem_drivers.h"
+#include <stddef.h>
+
 
 //Datentypen
 typedef enum{
