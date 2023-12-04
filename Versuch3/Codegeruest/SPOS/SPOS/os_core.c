@@ -123,6 +123,11 @@ void os_init(void) {
     lcd_writeProgString(PSTR("Booting SPOS ..."));
     os_checkResetSource(OS_ALLOWED_RESET_SOURCES);
     delayMs(DEFAULT_OUTPUT_DELAY * 20);
+	
+	//Fehler uberpruefung vom heap
+	if(__heap_start > HEAPOFFSET+0x100){
+		os_error("HeapStart ist groesser als das Offset");
+	}
 
     os_initScheduler();
 

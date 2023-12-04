@@ -38,7 +38,7 @@ MemDriver intSRAM__ = {
 	.init = &init,
 	.read = &read,
 	.write = &write
-};
+	};
 	
 
 

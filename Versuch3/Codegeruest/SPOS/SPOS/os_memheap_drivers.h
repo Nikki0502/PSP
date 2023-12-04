@@ -27,7 +27,7 @@ typedef struct{
 	MemAddr endHeap;
 	AllocStrategy currentStrat;
 	char *name;
-	}Heap;
+}Heap;
 	
 #define intHeap (&intHeap__) 
 

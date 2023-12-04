@@ -35,4 +35,7 @@ void os_init(void);
 //! Shows error on display and terminates program
 void os_errorPStr(const char *str);
 
+//
+extern uint8_t const __heap_start ;
+
 #endif
