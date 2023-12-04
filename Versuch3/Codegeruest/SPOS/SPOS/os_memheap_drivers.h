@@ -28,7 +28,8 @@ typedef struct{
 	AllocStrategy currentStrat;
 	char *name;
 }Heap;
-	
+
+Heap intHeap__;
 #define intHeap (&intHeap__) 
 
 void os_initHeaps(void);

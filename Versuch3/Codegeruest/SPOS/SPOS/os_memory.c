@@ -181,6 +181,7 @@ void os_free(Heap* heap, MemAddr addr){
 
 
 void os_freeProcessMemory (Heap *heap, ProcessID pid){
+	os_enterCriticalSection();
 	uint16_t index = 0;
 	while(os_getMapEntry(heap,os_getUseStart(heap)+ index)!= pid && index < os_getUseSize(heap)){
 		index +=1;
@@ -188,7 +189,7 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	if(os_getMapEntry(heap,os_getUseStart(heap)+ index)== pid){
 		os_free(heap,(os_getUseStart(heap)+ index));
 	}
-	
+	os_leaveCriticalSection();
 }
 
 

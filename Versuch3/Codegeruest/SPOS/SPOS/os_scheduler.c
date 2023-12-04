@@ -18,6 +18,7 @@
 #include "os_taskman.h"
 #include "util.h"
 #include "defines.h"
+#include "os_memory.h"
 
 
 #include <avr/interrupt.h>
@@ -377,8 +378,8 @@ bool os_kill(ProcessID pid){
 	}
 	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
 	// Aufraeumen des Processes
-	os_processes[pid].state = OS_PS_UNUSED;//sollte Denke ich reichen
-	// vllt noch heap oder aufräumen
+	os_processes[pid].state = OS_PS_UNUSED;
+	os_freeProcessMemory(intHeap,pid);
 	
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler

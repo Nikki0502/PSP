@@ -29,7 +29,7 @@ typedef struct{
 	char name[];
 }MemDriver;
 
-//intSRAM Pointer
+//intSRAM Pointer 
 extern MemDriver intSRAM__;
 #define intSRAM (&intSRAM__)
 

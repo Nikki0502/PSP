@@ -34,10 +34,10 @@ MemDriver intSRAM__ = {
 	.endAddr = AVR_SRAM_END,
 	.currAddr = AVR_SRAM_LAST,
 	.remainingBytesInSRAM = AVR_MEMORY_SRAM,
-	.name = "SRAM",
 	.init = &init,
 	.read = &read,
-	.write = &write
+	.write = &write,
+	.name = "SRAM"
 	};
 	
 
