@@ -16,9 +16,10 @@
 Heap intHeap__= {
 		.driver = intSRAM,
 		.startaddrMap = (MemAddr) (0x100 + HEAPOFFSET) ,
-		
 		.startaddrUse = (MemAddr)((((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET)),
-		.endHeap= (MemAddr)(AVR_MEMORY_SRAM/2) ,
+		.endaddrHeap= (MemAddr)(AVR_MEMORY_SRAM/2) ,
+		.sizeMap= (((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET) -  (0x100 + HEAPOFFSET),
+		.sizeUser= (AVR_MEMORY_SRAM/2) - (((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET),
 		.currentStrat = OS_MEM_FIRST,
 		.name = "HEAP"
 	};

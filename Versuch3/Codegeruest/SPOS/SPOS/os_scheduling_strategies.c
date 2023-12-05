@@ -154,7 +154,8 @@ ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) 
 	}
    
 	schedulingInfo.timeslice --;
-	if (schedulingInfo.timeslice==0){
+	//test fuer Terminieren ob entweder Quantum leer oder hat sich selbst gekillt 
+	if (schedulingInfo.timeslice==0 || processes[current].state==OS_PS_UNUSED){
 		current = os_Scheduler_Even(processes,current);
 		schedulingInfo.timeslice = processes[current].priority;
 	}

@@ -23,7 +23,9 @@ typedef struct{
 	MemDriver *driver;
 	MemAddr startaddrMap;
 	MemAddr startaddrUse;
-	MemAddr endHeap;
+	MemAddr endaddrHeap;
+	size_t sizeMap;
+	size_t sizeUser;
 	AllocStrategy currentStrat;
 	char *name;
 }Heap;

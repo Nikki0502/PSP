@@ -50,7 +50,7 @@ MemAddr os_getMapStart(const Heap* heap){
 }
 //Size of the Map
 size_t os_getMapSize(const Heap* heap){
-	return (size_t)(os_getUseStart(heap) - os_getMapStart(heap));
+	return heap->sizeMap;
 }
 
 //Returns the Addr of the Map corresponding to the Useraddr
@@ -88,7 +88,7 @@ MemValue os_getMapEntry (const Heap *heap, MemAddr userAddr){
  */
 
 size_t os_getUseSize(const Heap *heap){
-	return (size_t)(heap->endHeap - heap->startaddrUse);
+	return heap->sizeUser;
 }
 MemAddr os_getUseStart(const Heap *heap){
 	return heap->startaddrUse;
