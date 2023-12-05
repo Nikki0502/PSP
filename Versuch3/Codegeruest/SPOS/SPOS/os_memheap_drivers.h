@@ -26,6 +26,7 @@ typedef struct{
 	MemAddr endaddrHeap;
 	size_t sizeMap;
 	size_t sizeUser;
+	size_t sizeHeap;
 	AllocStrategy currentStrat;
 	char *name;
 }Heap;

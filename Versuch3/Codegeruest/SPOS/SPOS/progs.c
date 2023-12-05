@@ -1,17 +1,17 @@
 //-------------------------------------------------
-//          TestTask: Termination
+//          TestTask: Free Map
 //-------------------------------------------------
 
 #include "lcd.h"
-#include "os_core.h"
 #include "os_input.h"
+#include "os_memheap_drivers.h"
 #include "os_memory.h"
 #include "os_scheduler.h"
-#include "os_taskman.h"
 #include "util.h"
 
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <string.h>
 #include <util/atomic.h>
 
 #if VERSUCH < 3
@@ -19,12 +19,18 @@
 #endif
 
 //---- Adjust here what to test -------------------
+//! The heap-driver we expect to find at position 0 of the heap-list
+#define DRIVER intHeap
+//! Number of bytes we allocate by hand. Must be even and >2.
+#define SIZE 10
+//! The minimal size of the map we accept
+#define MAPSIZE 100
+//! Defines if the first phase is executed
 #define PHASE_1 1
+//! Defines if the second phase is executed
 #define PHASE_2 1
-//! Defines how often each strategy is tested
-#define RUNS 2
-//! Defines after how many spawns the strategy is changed
-#define MAX_SPAWNS 200
+//! Defines if the third phase is executed
+#define PHASE_3 1
 //-------------------------------------------------
 
 #ifndef WRITE
@@ -49,90 +55,204 @@
 #define CONFIRM_REQUIRED 1
 #endif
 
-// Flag indicating an error
-static bool errflag = false;
-
-static int stderrWrapper(const char c, FILE *stream) {
-    errflag = true;
-    putchar(c);
-    return 0;
+//! Prints phase information to the LCD.
+void tt_phase(uint8_t i, const char *name) {
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase "));
+    lcd_writeDec(i);
+    lcd_writeChar(':');
+    lcd_line2();
+    lcd_writeProgString(name);
+    delayMs(DEFAULT_OUTPUT_DELAY * 8);
 }
-static FILE *wrappedStderr = &(FILE)FDEV_SETUP_STREAM(stderrWrapper, NULL, _FDEV_SETUP_WRITE);
+//! Prints OK for the phase message.
+void tt_phaseOK(void) {
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 8);
+    lcd_clear();
+}
 
-#define EXPECT_NO_ERROR  \
-    do {                 \
-        errflag = false; \
-    } while (0)
+//! Checks if all bytes in a certain memory-area are the same.
+uint8_t tt_isAreaUniform(MemAddr start, uint16_t size, MemValue byte);
 
-#define ASSERT_NO_ERROR                          \
-    do {                                         \
-        ATOMIC {                                 \
-            if (errflag) {                       \
-                TEST_FAILED("Unexpected error"); \
-                HALT;                            \
-            }                                    \
-        }                                        \
-    } while (0)
 
-//! Global spawn counter
-volatile uint16_t tt_spawns = 2;
-
-//! Starts one process and increases the spawm-counter.
-void tt_test(Program prog);
-//! Prints an error message on the LCD and halts.
-void tt_throwError(const char *str);
-//! converts a name of a scheduling strategy to a 4-digit initial
-const char *tt_stratToName(SchedulingStrategy strat);
-//! Tests if every strategy is able to spawn MAX_SPAWNS processes.
-void tt_testSpawns(void);
-//! Tests if killing a process will leave foreign critical sections
-void tt_testForeignCriticalSections(void);
-
-//! This programs includes the main procedure
 REGISTER_AUTOSTART(program1)
 void program1(void) {
+    // If there are any problems, we set a certain bit in the bitmask
+    // "errorCode", indicating what exactly went wrong.
+    uint8_t errorCode = 0;
 
-    stderr = wrappedStderr;
-    EXPECT_NO_ERROR;
-    {
-
+// Phase 1: Some sanity checks
 #if PHASE_1
+    tt_phase(1, PSTR("Sanity check"));
 
-        if (MAX_NUMBER_OF_PROCESSES < 5) {
-            tt_throwError(PSTR("Max.Num.Proc < 5"));
-        }
 
+    // Check if the driver returned by lookupHeap is the correct one.
+    // If not, set bit 0
+    errorCode |= (os_lookupHeap(0) != DRIVER) << 0;
+    // Check if the mapsize of the heap is correct.
+    // If not, set bit 1
+    errorCode |= (os_getMapSize(DRIVER) < MAPSIZE) << 1;
+    // Check if the length of the heaplist is correct.
+    // If not, set bit 2
+    errorCode |= (os_getHeapListLength() != (VERSUCH <= 3 ? 1 : 2)) << 2;
+    // Check if use- and map-area have a size relationship of 2:1.
+    // If not, set bit 3
+    errorCode |= (os_getMapSize(DRIVER) != os_getUseSize(DRIVER) - os_getMapSize(DRIVER)) << 3;
+    // Check if the ends before the stack area
+    errorCode |= (os_getUseStart(DRIVER) + os_getUseSize(DRIVER) - 1 > PROCESS_STACK_BOTTOM(MAX_NUMBER_OF_PROCESSES)) << 4;
+
+    // Output of test-results, if there was an error
+    if (errorCode) {
+        TEST_FAILED("");
+        delayMs(DEFAULT_OUTPUT_DELAY * 8);
         lcd_clear();
-        lcd_writeProgString(PSTR("Phase 1: Foreign Crit. Sec."));
-        delayMs(8 * DEFAULT_OUTPUT_DELAY);
-
-        tt_testForeignCriticalSections();
-
-#endif
-#if PHASE_2
-
-        lcd_clear();
-        lcd_writeProgString(PSTR("Phase 2: Spawns"));
-        delayMs(8 * DEFAULT_OUTPUT_DELAY);
-
-        for (uint8_t run = 0; run < RUNS; run++) {
-            tt_testSpawns();
-        }
-
-        // At this point every scheduling strategy was able to
-        // spawn MAX_SPAWNS processes
-
-#endif
-
-        // kill everything else, show end and let idle take over
-        os_enterCriticalSection();
-        for (uint8_t i = 1; i < MAX_NUMBER_OF_PROCESSES; i++) {
-            if (i != os_getCurrentProc()) {
-                os_kill(i);
+        // The additional | at the end is intentional, it gets wrapped into
+        // the next line as the left table column separator
+        lcd_writeProgString(PSTR("|DR|MS|LS|12|ST||"));
+        for (uint8_t errorIndex = 0; errorIndex < 5; errorIndex++) {
+            if (errorCode & (1 << errorIndex)) {
+                lcd_writeProgString(PSTR("XX|"));
+            } else {
+                lcd_writeProgString(PSTR("OK|"));
             }
         }
+        HALT;
     }
-    ASSERT_NO_ERROR;
+
+    tt_phaseOK();
+#endif
+
+// Phase 2: Malloc
+#if PHASE_2
+    tt_phase(2, PSTR("malloc"));
+
+    // We use error-codes again
+    errorCode = 0;
+
+    // We allocate the whole use-area with os_malloc
+    MemAddr hugeChunk = os_malloc(DRIVER, os_getUseSize(DRIVER));
+    if (hugeChunk == 0) {
+        // We could not allocate the whole use-area
+        errorCode |= 1 << 0;
+    } else {
+        // Allocation was successful, but what does the map look like?
+        uint8_t mapEntry = (os_getCurrentProc() << 4) | 0x0F;
+        if (DRIVER->driver->read(os_getMapStart(DRIVER)) != mapEntry) {
+            // The first map-entry is wrong
+            errorCode |= 1 << 1;
+        }
+        if (!tt_isAreaUniform(os_getMapStart(DRIVER) + 1, os_getMapSize(DRIVER) - 1, 0xFF)) {
+            // The rest of the map is not filled with 0xFF
+            errorCode |= 1 << 2;
+        }
+
+        // Now we free and check if the map is correct afterwards
+        os_free(DRIVER, hugeChunk);
+        if (!tt_isAreaUniform(os_getMapStart(DRIVER), os_getMapSize(DRIVER), 0x00)) {
+            // there are some bytes in the map that are not 0
+            errorCode |= 1 << 3;
+        }
+    }
+
+    // Output of test-results, if there was an error
+    if (errorCode) {
+        TEST_FAILED("");
+        delayMs(DEFAULT_OUTPUT_DELAY * 8);
+        lcd_clear();
+        lcd_writeProgString(PSTR("MAL|OWN|FIL|FRE|"));
+        lcd_line2();
+        for (uint8_t errorIndex = 0; errorIndex < 4; errorIndex++) {
+            if (errorCode & (1 << errorIndex)) {
+                lcd_writeProgString(PSTR("ERR|"));
+            } else {
+                lcd_writeProgString(PSTR("OK |"));
+            }
+        }
+        HALT;
+    }
+
+    tt_phaseOK();
+#endif
+
+// Phase 3: Free
+#if PHASE_3
+    tt_phase(3, PSTR("free"));
+
+    /*  Calculating the map-address for our hand-allocated block of memory.
+     *  The block will be at the very end of the use-area because we write
+     *  into the very end of the map-area
+     */
+    uint16_t addr = os_getUseStart(DRIVER);
+    addr -= SIZE / 2;
+
+    // We build the first two entries of the map-area
+    ProcessID process = os_getCurrentProc();
+    process = (process << 4) | 0xF;
+
+    /* Now we allocate memory by hand. This is done in two steps. First we
+     * write the process-byte which contains the owner and an 0xF, then we
+     * write the remaining 0xF until we allocated the memory we need.
+     */
+    DRIVER->driver->write(addr, process);
+    for (uint8_t i = 1; i < SIZE / 2; i++) {
+        DRIVER->driver->write(addr + i, 0xFF);
+    }
+    // Fill the first half of the block with 0xFF
+    for (uint8_t i = 0; i < SIZE / 2; i++) {
+        DRIVER->driver->write(addr + (SIZE / 2) + i, 0xFF);
+    }
+
+    // Determine use address by calculating offset of map-entry to mapstart
+    MemAddr useaddr = ((addr - os_getMapStart(DRIVER)) * 2) + os_getUseStart(DRIVER);
+
+    /* Free map
+     * Expected state: free map + #SIZE/2 byte (0xFF) at the beginning of
+     * use-area. If free is implemented wrongly, it will also zero out the
+     * 0xFF at the beginning of the use-area
+     */
+    os_free(DRIVER, useaddr);
+
+    // Just like in phase 1 we use a bitmap to store errors
+    errorCode = 0;
+
+    // Check map data
+    for (uint8_t i = 0; i < SIZE / 2; i++) {
+        if (DRIVER->driver->read(addr + i)) {
+            // The map was not freed
+            errorCode |= 1 << 0;
+        }
+    }
+
+    // Check map data
+    for (uint8_t i = SIZE / 2; i < SIZE; i++) {
+        if (!(DRIVER->driver->read(addr + i) == 0xFF)) {
+            // The use area was touched
+            errorCode |= 1 << 1;
+        }
+    }
+
+    // Output of test-results, if there was an error
+    if (errorCode) {
+        TEST_FAILED("");
+        delayMs(DEFAULT_OUTPUT_DELAY * 8);
+        lcd_clear();
+        lcd_writeProgString(PSTR("MAP|USE|"));
+        lcd_line2();
+        for (uint8_t errorIndex = 0; errorIndex < 2; errorIndex++) {
+            if (errorCode & (1 << errorIndex)) {
+                lcd_writeProgString(PSTR("ERR|"));
+            } else {
+                lcd_writeProgString(PSTR("OK |"));
+            }
+        }
+        HALT;
+    }
+
+
+    tt_phaseOK();
+#endif
 
 // SUCCESS
 #if CONFIRM_REQUIRED
@@ -145,208 +265,19 @@ void program1(void) {
     lcd_line2();
     lcd_writeProgString(PSTR(" WAIT FOR IDLE  "));
     delayMs(DEFAULT_OUTPUT_DELAY * 6);
-
-    os_leaveCriticalSection();
 }
-
-// We need 3 slots
-void program2(void) {
-    tt_spawns++;
-    while (1) {
-        delayMs(DEFAULT_OUTPUT_DELAY);
-    }
-}
-
-
-// The following programs execute a new process of themselves and then die
-REGISTER_AUTOSTART(program3)
-void program3(void) {
-    tt_test(program3);
-}
-
-#if MAX_NUMBER_OF_PROCESSES > 5
-REGISTER_AUTOSTART(program4)
-void program4(void) {
-    tt_test(program4);
-}
-#endif
-
-#if MAX_NUMBER_OF_PROCESSES > 6
-REGISTER_AUTOSTART(program5)
-void program5(void) {
-    tt_test(program5);
-}
-#endif
-
-#if MAX_NUMBER_OF_PROCESSES > 7
-REGISTER_AUTOSTART(program6)
-void program6(void) {
-    tt_test(program6);
-}
-#endif
 
 /*!
- *  Tests whether the pid passed is invalid.
- *  If so, outputs a message and halts the program.
- *
+ * Checks if all bytes in a certain memory-area are the same.
+ * \param  start First address of area
+ * \param  size  Length of area in bytes
+ * \param  byte  Byte that is supposed to appear in this area
  */
-void tt_verifyPID(ProcessID pid) {
-    if (pid < 1 || pid > 7) {
-        ATOMIC {
-            TEST_FAILED("os_exec failed: ");
-            lcd_writeDec(pid);
-            HALT;
+uint8_t tt_isAreaUniform(MemAddr start, uint16_t size, MemValue byte) {
+    for (uint16_t i = 0; i < size; i++) {
+        if (DRIVER->driver->read(start + i) != byte) {
+            return 0;
         }
     }
-}
-
-/*!
- *  Tests if killing another process will leave foreign
- *  critical sections.
- */
-void tt_testForeignCriticalSections(void) {
-    os_enterCriticalSection();
-
-    // Start a process and immediately kill it
-    ProcessID pid = os_exec(program2, DEFAULT_PRIORITY);
-    tt_verifyPID(pid);
-    os_kill(pid);
-
-    if (TIMSK2 & (1 << OCIE2A)) {
-        ATOMIC {
-            // Scheduler activated by os_kill()
-            TEST_FAILED("Left crit. sec.");
-            HALT;
-        }
-    }
-
-    lcd_goto(2, 14);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(8 * DEFAULT_OUTPUT_DELAY);
-
-
-    os_leaveCriticalSection();
-}
-
-/*!
- * Starts one process and increases the spawn-counter.
- * \param  prog Program to start
- */
-void tt_test(Program prog) {
-    delayMs(DEFAULT_OUTPUT_DELAY);
-    /*
-     * The critical section makes sure, that we do not start a fork-bomb, e.g.
-     * force termination of old process before first runtime for new process.
-     * The dispatcher should clean this up.
-     */
-    os_enterCriticalSection();
-    os_exec(prog, DEFAULT_PRIORITY);
-    tt_spawns++;
-}
-
-/*!
- * Converts a name of a scheduling strategy to a 4-digit initials.
- * \param  strat Strategy of which you want to know the initials
- * \return       4-digit code for that strategy
- */
-const char *tt_stratToName(SchedulingStrategy strat) {
-    switch (strat) {
-        case OS_SS_EVEN:
-            return PSTR("EVEN");
-        case OS_SS_INACTIVE_AGING:
-            return PSTR("INAG");
-        case OS_SS_RANDOM:
-            return PSTR("RAND");
-        case OS_SS_ROUND_ROBIN:
-            return PSTR("RORO");
-        case OS_SS_RUN_TO_COMPLETION:
-            return PSTR(" RTC");
-        default:
-            return PSTR("NULL");
-    }
-}
-
-static uint8_t tt_getNumberOfActiveProcs(void) {
-    uint8_t num = 0;
-    for (ProcessID pid = 0; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
-        if (os_getProcessSlot(pid)->state != OS_PS_UNUSED) num++;
-    }
-    return num;
-}
-
-/*!
- * Tests if every strategy is able to spawn MAX_SPAWNS processes.
- */
-void tt_testSpawns(void) {
-    // In this array you can select which strategies you want to test
-    // Remove (or comment out) the strategies you don't want to test
-    SchedulingStrategy strategies[] = {
-        OS_SS_EVEN,
-        OS_SS_RANDOM,
-        OS_SS_ROUND_ROBIN,
-        OS_SS_INACTIVE_AGING};
-    const uint8_t numOfStrategies = sizeof(strategies) / sizeof(strategies[0]);
-    uint8_t currentStrat = strategies[0];
-
-    // This variable holds the process ID of the currently
-    // running process of program 2
-    ProcessID prog2ProcID = 0;
-
-    for (uint8_t c = 0; c < numOfStrategies; c++) {
-        currentStrat = strategies[c];
-        os_setSchedulingStrategy(currentStrat);
-
-        os_enterCriticalSection();
-        tt_spawns = 0;
-        os_leaveCriticalSection();
-
-        lcd_clear();
-
-        uint8_t finished = 0;
-
-        // This loop runs until MAX_SPAWNS processes were spawned with the
-        // selected strategy
-        while (1) {
-            lcd_line1();
-            lcd_writeProgString(PSTR("Act.P.: "));
-            lcd_writeDec(tt_getNumberOfActiveProcs());
-            lcd_writeChar('/');
-            lcd_writeDec(MAX_NUMBER_OF_PROCESSES);
-            lcd_writeChar(' ');
-            lcd_writeProgString(tt_stratToName(currentStrat));
-            lcd_line2();
-            lcd_writeProgString(PSTR("Spawns: "));
-            lcd_writeDec(tt_spawns);
-
-            /*
-             * Testing os_kill: If it works, a process of program 2 will be killed.
-             * In the next iteration program 2 will be started again. If it does not
-             * work, the process remains active and in the next iteration another
-             * process of program 2 will be executed. Since program 2 does not
-             * terminate on its own, spawning will cease after a few tries.
-             */
-            if (prog2ProcID) {
-                os_kill(prog2ProcID);
-                prog2ProcID = 0;
-            } else {
-                prog2ProcID = os_exec(program2, 1);
-                tt_verifyPID(prog2ProcID);
-            }
-
-            // We want to break after a fixed number of spawns. Accessing a shared
-            // variable must be safe though
-            os_enterCriticalSection();
-            finished = tt_spawns >= MAX_SPAWNS ? 1 : 0;
-            os_leaveCriticalSection();
-
-            if (finished) {
-                // Make sure we kill the current prog2 instance. prog2ProcID will be set
-                // to 0 again in the next run so we could end up with multiple prog2 instances.
-                if (prog2ProcID) {
-                    os_kill(prog2ProcID);
-                }
-                break; // out of spawn-counting loop
-            }
-        }
-    }
+    return 1;
 }

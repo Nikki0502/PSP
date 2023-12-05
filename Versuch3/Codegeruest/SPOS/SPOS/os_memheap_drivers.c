@@ -15,11 +15,11 @@
 //Globale Variable
 Heap intHeap__= {
 		.driver = intSRAM,
-		.startaddrMap = (MemAddr) (0x100 + HEAPOFFSET) ,
-		.startaddrUse = (MemAddr)((((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET)),
-		.endaddrHeap= (MemAddr)(AVR_MEMORY_SRAM/2) ,
-		.sizeMap= (((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET) -  (0x100 + HEAPOFFSET),
-		.sizeUser= (AVR_MEMORY_SRAM/2) - (((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET),
+		.sizeHeap = (size_t)(AVR_MEMORY_SRAM/2 - HEAPOFFSET),
+		.sizeMap =(size_t)((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3),
+		.sizeUser = (size_t)(((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)*2),
+		.startaddrMap = (MemAddr)(0x100 + HEAPOFFSET),
+		.startaddrUse =(MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
 		.currentStrat = OS_MEM_FIRST,
 		.name = "HEAP"
 	};
