@@ -14,31 +14,29 @@
 
 //Funktionen des MemDriver-Types(init,read,write)
 
-static void init(void){
+void init_Internal(void){
 }
 
-static MemValue read(MemAddr addr){
+MemValue read_Internal(MemAddr addr){
 	uint8_t *pointer = (uint8_t*)&addr;
 	MemValue value = *pointer;
 	return value;
 }
 
-static void write(MemAddr addr , MemValue value){
+void write_Internal(MemAddr addr , MemValue value){
 	uint8_t *pointer = (uint8_t*)&addr;
 	*pointer = value;
 }
 
 //Driver intSRAM init 
 MemDriver intSRAM__ = {
-	.startAddr = AVR_SRAM_START,
-	.endAddr = AVR_SRAM_END,
-	.currAddr = AVR_SRAM_LAST,
-	.remainingBytesInSRAM = AVR_MEMORY_SRAM,
-	.init = &init,
-	.read = &read,
-	.write = &write,
-	.name = "SRAM"
-	};
+	.startAddr = 0x100 + HEAPOFFSET,
+	.endAddr = 0x10FF,
+	.init = init_Internal,
+	.read = read_Internal,
+	.write = write_Internal
+	//.name = "SRAM"
+};
 	
 
 

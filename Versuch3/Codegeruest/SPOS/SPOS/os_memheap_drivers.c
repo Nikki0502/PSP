@@ -6,11 +6,8 @@
  */ 
 
 #include "os_memheap_drivers.h"
-#include "atmega644constants.h"
-#include "util.h"
-#include "os_mem_drivers.h"
 #include "defines.h"
-#include "os_memory.h"
+
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
@@ -19,8 +16,9 @@
 Heap intHeap__= {
 		.driver = intSRAM,
 		.startaddrMap = (MemAddr) (0x100 + HEAPOFFSET) ,
-		.startaddrUse = (MemAddr)(((BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8)-0x100 + HEAPOFFSET)/3)+(0x100 + HEAPOFFSET),
-		.endHeap= (MemAddr)(BOTTOM_OF_PROCS_STACK - STACK_SIZE_PROC * 8) ,
+		
+		.startaddrUse = (MemAddr)((((AVR_MEMORY_SRAM/2) - (0x100 + HEAPOFFSET))/3)+(0x100 + HEAPOFFSET)),
+		.endHeap= (MemAddr)(AVR_MEMORY_SRAM/2) ,
 		.currentStrat = OS_MEM_FIRST,
 		.name = "HEAP"
 	};

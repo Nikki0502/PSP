@@ -20,6 +20,11 @@ int main(void) {
     // Wait and clear the LCD
     delayMs(600);
     lcd_clear();
+	
+	//Fehler uberpruefung vom heap
+	if( (uint16_t)(&__heap_start) > HEAPOFFSET+0x100){
+		os_error("HeapStart ist groesser als das Offset");
+	}
 
     // Start the operating system
     os_startScheduler();

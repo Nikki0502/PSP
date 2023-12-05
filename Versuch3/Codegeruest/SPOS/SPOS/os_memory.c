@@ -5,11 +5,7 @@
  *  Author: nikum
  */ 
 #include "os_memory.h"
-#include "atmega644constants.h"
-#include "util.h"
-#include "defines.h"
 #include "os_scheduler.h"
-#include "os_memheap_drivers.h"
 #include "os_core.h"
 #include "os_memory_strategies.h"
 
@@ -48,14 +44,15 @@ MemValue getHighNibble (const Heap *heap, MemAddr addr){
  *	Map Management
  */
 
-//Size of the Map
-size_t os_getMapSize(const Heap* heap){
-	return (size_t)(os_getUseStart(heap) - os_getMapStart(heap));
-}
 //Start of the Map
 MemAddr os_getMapStart(const Heap* heap){
 	return heap->startaddrMap;
 }
+//Size of the Map
+size_t os_getMapSize(const Heap* heap){
+	return (size_t)(os_getUseStart(heap) - os_getMapStart(heap));
+}
+
 //Returns the Addr of the Map corresponding to the Useraddr
 MemAddr os_getMapAddr(const Heap *heap, MemAddr userAddr){
 	return os_getMapStart(heap) + ((userAddr - os_getUseStart(heap))/2);

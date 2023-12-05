@@ -11,7 +11,6 @@
 #include "os_mem_drivers.h"
 #include <stddef.h>
 
-
 //Datentypen
 typedef enum{
 	OS_MEM_FIRST,

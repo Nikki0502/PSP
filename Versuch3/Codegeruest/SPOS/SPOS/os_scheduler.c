@@ -16,8 +16,6 @@
 #include "os_input.h"
 #include "os_scheduling_strategies.h"
 #include "os_taskman.h"
-#include "util.h"
-#include "defines.h"
 #include "os_memory.h"
 
 
@@ -372,6 +370,7 @@ void os_dispatcher(void){
  * \return Bool if succesfull or not
  */
 bool os_kill(ProcessID pid){
+	os_enterCriticalSection();
 	// Versuchte Term des Idle oder falsche pid
 	if(pid==0 || pid>= MAX_NUMBER_OF_PROCESSES){
 		return false;
@@ -379,10 +378,16 @@ bool os_kill(ProcessID pid){
 	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;
-	os_freeProcessMemory(intHeap,pid);
+	//os_freeProcessMemory(intHeap,pid);
+	
 	
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler
+	os_leaveCriticalSection();
+	if(pid==currentProc){
+		os_leaveCriticalSection();
+	}
 	while(pid==currentProc){}
+		
 	return true;
 }

@@ -8,6 +8,7 @@
 
 #ifndef OS_MEM_DRIVERS_H_
 #define OS_MEM_DRIVERS_H_
+
 #include <stdint.h>
 
 //Datentypen
@@ -21,16 +22,14 @@ typedef uint8_t MemValue;
 typedef struct{
 	MemAddr startAddr;
 	MemAddr endAddr;
-	MemAddr currAddr;
-	uint16_t remainingBytesInSRAM;
 	void (*init)();
 	MemValue(*read)(MemAddr);
 	void (*write)(MemAddr,MemValue);
-	char name[];
+	//char name[];
 }MemDriver;
 
 //intSRAM Pointer 
-extern MemDriver intSRAM__;
+MemDriver intSRAM__;
 #define intSRAM (&intSRAM__)
 
 
