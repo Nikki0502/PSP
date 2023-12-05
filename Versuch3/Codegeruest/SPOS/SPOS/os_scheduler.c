@@ -384,7 +384,7 @@ bool os_kill(ProcessID pid){
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler
 	os_leaveCriticalSection();
-	if(pid==currentProc){
+	if(pid==currentProc&& criticalSectionCount >0){
 		os_leaveCriticalSection();
 	}
 	while(pid==currentProc){}
