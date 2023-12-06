@@ -26,8 +26,8 @@ Heap intHeap__= {
 
 //Funktionen
 void os_initHeaps(void){
-	for (MemAddr i = intHeap__.startaddrMap; i < intHeap__.startaddrUse;i++){
-		intHeap__.driver->write(i,0);
+	for (size_t i= 0; i<intHeap__.sizeMap ;i++){
+		intHeap__.driver->write(i + intHeap__.startaddrMap,0x00);
 	}
 }
 size_t os_getHeapListLength(void){

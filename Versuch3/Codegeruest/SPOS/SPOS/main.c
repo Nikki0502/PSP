@@ -3,6 +3,7 @@
 #include "os_core.h"
 #include "os_scheduler.h"
 #include "util.h"
+#include "os_memheap_drivers.h" 
 
 #include <avr/pgmspace.h>
 
@@ -25,6 +26,8 @@ int main(void) {
 	if( (uint16_t)(&__heap_start) > HEAPOFFSET+0x100){
 		os_error("HeapStart ist groesser als das Offset");
 	}
+	//heap init 
+	os_initHeaps();
 
     // Start the operating system
     os_startScheduler();

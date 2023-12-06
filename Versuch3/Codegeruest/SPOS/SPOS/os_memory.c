@@ -19,22 +19,24 @@
  */
 void setLowNibble (const Heap *heap, MemAddr addr, MemValue value){
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
-		heap->driver->write(addr, (getHighNibble(heap,addr)<<4) + value);
+		heap->driver->write(addr, ((getHighNibble(heap,addr)<<4) | value));
 	}
 }
 
 void setHighNibble (const Heap *heap, MemAddr addr, MemValue value){
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
-		heap->driver->write(addr, (getLowNibble(heap,addr) + (value<<4)));
+		heap->driver->write(addr, ((getLowNibble(heap,addr) | (value<<4))));
 	}
 }
 
 MemValue getLowNibble (const Heap *heap, MemAddr addr){
-	return (heap->driver->read(addr) & 0b00001111);
+	MemValue volatile value =(heap->driver->read(addr) & 0b00001111);
+	return value;
 }
 
 MemValue getHighNibble (const Heap *heap, MemAddr addr){
-	return (heap->driver->read(addr)>>4);
+	MemValue value = (heap->driver->read(addr)>>4);
+	return value;
 }
 
 
@@ -53,7 +55,7 @@ size_t os_getMapSize(const Heap* heap){
 	return heap->sizeMap;
 }
 
-//Returns the Addr of the Map corresponding to the Useraddr
+//Returns the Addr of the Map corresponding to the Useraddr NOT THE NIBBLE
 MemAddr os_getMapAddr(const Heap *heap, MemAddr userAddr){
 	return os_getMapStart(heap) + ((userAddr - os_getUseStart(heap))/2);
 }
@@ -61,7 +63,7 @@ MemAddr os_getMapAddr(const Heap *heap, MemAddr userAddr){
 void os_setMapAddrValue(const Heap *heap, MemAddr userAddr, MemValue value){
 	MemAddr freeAddrMap = os_getMapAddr(heap,userAddr);
 	// checks if high or low nibble 
-	bool highNible =(userAddr - os_getUseStart(heap))%2==0;
+	bool volatile highNible =((userAddr - os_getUseStart(heap))%2==0);
 	if(highNible){
 		setHighNibble(heap,freeAddrMap,value);
 	}
@@ -98,19 +100,24 @@ MemAddr os_getUseStart(const Heap *heap){
 /*
  * Chunk Management
  */
+
+//Dekrementiert die Addr solange bis die passende MapAddr gleich einer 0x0i fuer ein i:={1,..,7}
 MemAddr os_getFirstByteOfChunk (const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x0F){
 		userAddr -=1;
 	}	
 	return userAddr;
 }
+// Findet erstes Byte und zaehlt hoch solange die folgenden 0x0F sind Byte
 uint16_t os_getChunkSize(const Heap *heap, MemAddr userAddr){
 	MemAddr currentAddrChunk = os_getFirstByteOfChunk(heap,userAddr);
 	currentAddrChunk +=1;
 	uint16_t size = 0;
-	while(os_getMapEntry(heap,currentAddrChunk) == 0x0F){
+	MemValue valueOfcurrentAddr =os_getMapEntry(heap,currentAddrChunk);
+	while(valueOfcurrentAddr == (MemValue)0x0F){
 		size +=1;
 		currentAddrChunk +=1;
+		valueOfcurrentAddr =os_getMapEntry(heap,currentAddrChunk);
 	}
 	return size;
 }
@@ -140,23 +147,27 @@ AllocStrategy os_getAllocationStrategy(const Heap *heap){
 
 MemAddr os_malloc(Heap* heap, uint16_t size){
 	os_enterCriticalSection();
+	//size anpassen
+	
+	
 	// finden der ersten freien Addr im Userbereich
-	MemAddr freeAddrUser;
+	MemAddr firstChunkAddrUser;
 	switch (os_getAllocationStrategy(heap)){
-		case OS_MEM_FIRST: freeAddrUser = os_Memory_FirstFit(heap,(size_t)size); break;
-		default: freeAddrUser= 0;
+		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
+		default: firstChunkAddrUser= 0;
 	}
 	//falls keine frei ist
-	if(freeAddrUser==0){
+	if(firstChunkAddrUser==0){
 		return 0;
 	}
 	//Map anpassen 
-	os_setMapAddrValue(heap,freeAddrUser,os_getCurrentProc());
+	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<size;i++){
-		os_setMapAddrValue(heap,(freeAddrUser + i),0xF);
+		os_setMapAddrValue(heap,(firstChunkAddrUser + i),0xF);
 	}
-	return freeAddrUser;
+	
 	os_leaveCriticalSection();
+	return firstChunkAddrUser;
 }
 	
 void os_free(Heap* heap, MemAddr addr){
@@ -164,12 +175,13 @@ void os_free(Heap* heap, MemAddr addr){
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);
 	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
 	//versucht speicher von anderen Process frei zugeben
-	if(os_getMapEntry(heap,startOfChunk)!=os_getCurrentProc()){
+	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
+	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
 		os_error("os_free:not the right MemChunk");
 	}
 	else{
 		os_setMapAddrValue(heap,startOfChunk,0);
-		for (uint16_t i =1; i < sizeOfChunk ; i++){
+		for (uint16_t i =1; i <= sizeOfChunk ; i++){
 			os_setMapAddrValue(heap,(startOfChunk + i),0);
 		}
 	}
