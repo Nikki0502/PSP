@@ -103,7 +103,7 @@ MemAddr os_getUseStart(const Heap *heap){
 
 //Dekrementiert die Addr solange bis die passende MapAddr gleich einer 0x0i fuer ein i:={1,..,7}
 MemAddr os_getFirstByteOfChunk (const Heap *heap, MemAddr userAddr){
-	while(os_getMapEntry(heap, userAddr) == 0x0F){
+	while(os_getMapEntry(heap, userAddr) == 0x0F && userAddr>=os_getUseStart(heap)){
 		userAddr -=1;
 	}	
 	return userAddr;
