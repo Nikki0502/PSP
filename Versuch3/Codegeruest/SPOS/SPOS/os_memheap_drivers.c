@@ -12,7 +12,7 @@
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-//Globale Variable
+//Heap struct mit charakteristischen Attributen
 Heap intHeap__= {
 		.driver = intSRAM,
 		.sizeHeap = (size_t)(AVR_MEMORY_SRAM/2 - HEAPOFFSET),
@@ -24,12 +24,13 @@ Heap intHeap__= {
 		.name = "HEAP"
 	};
 
-//Funktionen
+//Initialisiert die Map(setzt alle Einträge auf 0(unused))
 void os_initHeaps(void){
 	for (size_t i= 0; i<intHeap__.sizeMap ;i++){
 		intHeap__.driver->write(i + intHeap__.startaddrMap,0x00);
 	}
 }
+
 size_t os_getHeapListLength(void){
 	return 1;
 }

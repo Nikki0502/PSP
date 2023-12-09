@@ -13,18 +13,19 @@
 
 //Datentypen
 
-typedef uint16_t MemAddr;
 
-typedef uint8_t MemValue;
+typedef uint16_t MemAddr; //Adresse auf SRAM
+
+typedef uint8_t MemValue; //Wwet der Adresse
 
 //Driver
 
 typedef struct{
 	MemAddr startAddr;
 	MemAddr endAddr;
-	void (*init)();
-	MemValue(*read)(MemAddr);
-	void (*write)(MemAddr,MemValue);
+	void (*init)(); //initialisierung des Speichermediums
+	MemValue(*read)(MemAddr); //Wert den MemAddr referenziert auslesen
+	void (*write)(MemAddr,MemValue); //Wer den MemAddr referenziert ändern
 	//char name[];
 }MemDriver;
 

@@ -101,14 +101,14 @@ MemAddr os_getUseStart(const Heap *heap){
  * Chunk Management
  */
 
-//Dekrementiert die Addr solange bis die passende MapAddr gleich einer 0x0i fuer ein i:={1,..,7}
+//Gibt die erste Adresse eines allozierten Speicherblocks zurück
 MemAddr os_getFirstByteOfChunk (const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x0F && userAddr>=os_getUseStart(heap)){
 		userAddr -=1;
 	}	
 	return userAddr;
 }
-// Findet erstes Byte und zaehlt hoch solange die folgenden 0x0F sind Byte
+//Gibt die größte eines alloziierten Speicherblocks als uint16 zurück
 uint16_t os_getChunkSize(const Heap *heap, MemAddr userAddr){
 	MemAddr currentAddrChunk = os_getFirstByteOfChunk(heap,userAddr);
 	currentAddrChunk +=1;
@@ -145,24 +145,27 @@ AllocStrategy os_getAllocationStrategy(const Heap *heap){
  * Malloc and Free
  */
 
+/*Alloziiert Speicherplatz für einen Prozess
+  returnt 0 wenn kein Speicherblock gefunden wurde, sonst erste Adresse von gefundenem Block */
 MemAddr os_malloc(Heap* heap, uint16_t size){
 	os_enterCriticalSection();
 	//size anpassen
 	
 	
-	// finden der ersten freien Addr im Userbereich
+	/* Je nach Schedulingstrategie wird die erste Adresse des zu 
+	 verwendenen freien Speicherblocks zurückgegeben */
 	MemAddr firstChunkAddrUser;
 	switch (os_getAllocationStrategy(heap)){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
 		default: firstChunkAddrUser= 0;
 	}
-	//falls keine frei ist
+	//falls kein Speicherblock gefunden werden konnte
 	if(firstChunkAddrUser==0){
 		os_leaveCriticalSection();
 		return 0;
 	}
-	//Map anpassen 
+	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<size;i++){
 		os_setMapAddrValue(heap,(firstChunkAddrUser + i),0xF);
@@ -171,7 +174,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	os_leaveCriticalSection();
 	return firstChunkAddrUser;
 }
-	
+// Gibt Speicherplatz, der einem Prozess alloziiert wurde frei
 void os_free(Heap* heap, MemAddr addr){
 	os_enterCriticalSection();
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);

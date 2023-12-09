@@ -16,13 +16,13 @@
 
 void init_Internal(void){
 }
-
+//Gibt den Wert an der übergebenen Adresse zurück
 MemValue read_Internal(MemAddr addr){
 	uint8_t *pointer = (uint8_t*)addr;
 	MemValue value = *pointer;
 	return value;
 }
-
+//Beschreibt den Wert der übergebenen Adresse
 void write_Internal(MemAddr addr , MemValue value){
 	uint8_t *pointer = (uint8_t*)addr;
 	*pointer = value;

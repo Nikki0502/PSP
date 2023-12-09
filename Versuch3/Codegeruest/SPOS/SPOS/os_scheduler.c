@@ -376,7 +376,6 @@ bool os_kill(ProcessID pid){
 		os_leaveCriticalSection();
 		return false;
 	}
-	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;
 	os_freeProcessMemory(intHeap,pid);

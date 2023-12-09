@@ -6,7 +6,7 @@
  */ 
 
 #include "os_memory.h"
-
+//Gibt die erste Speicheradresse von einem freien Block zurück
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x00 && userAddr>=os_getUseStart(heap)){
 		userAddr -=1;
@@ -14,7 +14,7 @@ MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
 	return userAddr+1;
 }
 
-// Findet erstes Byte und zaehlt hoch solange die folgenden 0x0F sind Byte
+//Gibt die größte eines freien Speicherblocks zurück
 uint16_t os_getFreeChunkSize(const Heap *heap, MemAddr userAddr){
 	MemAddr currentAddrFree = os_getFirstByteOfFree(heap,userAddr);
 	uint16_t size = 0;
@@ -52,6 +52,7 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 MemAddr os_Memory_NextFit (Heap *heap, size_t size){
 	return 0;
 }
+//Wählt den größten freien Speicherblock aus, der groß genug ist
 MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 	MemAddr current = os_getUseStart(heap);
 	MemAddr biggestChunkLeader = 0;
@@ -71,6 +72,7 @@ MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 	}
 	return 0;
 }
+//Wäht den kleinsten freien Speicherblock aus, der groß genug ist
 MemAddr os_Memory_BestFit (Heap *heap, size_t size){
 	return 0;
 }
