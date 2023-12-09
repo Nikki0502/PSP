@@ -154,10 +154,12 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	MemAddr firstChunkAddrUser;
 	switch (os_getAllocationStrategy(heap)){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
+		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
 		default: firstChunkAddrUser= 0;
 	}
 	//falls keine frei ist
 	if(firstChunkAddrUser==0){
+		os_leaveCriticalSection();
 		return 0;
 	}
 	//Map anpassen 
@@ -191,15 +193,22 @@ void os_free(Heap* heap, MemAddr addr){
 
 void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	os_enterCriticalSection();
-	uint16_t index = 0;
-	while(os_getMapEntry(heap,os_getUseStart(heap)+ index)!= pid && index < os_getUseSize(heap)){
-		index +=1;
-	}
-	if(os_getMapEntry(heap,os_getUseStart(heap)+ index)== pid){
-		os_free(heap,(os_getUseStart(heap)+ index));
+	MemAddr current =os_getUseStart(heap);
+	while(current < (os_getUseStart(heap)+os_getUseSize(heap))){
+		if(os_getMapEntry(heap,current)== pid){
+			MemAddr startOfChunk = current;
+			uint16_t sizeOfChunk = os_getChunkSize(heap,startOfChunk);
+			os_setMapAddrValue(heap,startOfChunk,0);
+			for (uint16_t i =1; i <= sizeOfChunk ; i++){
+				os_setMapAddrValue(heap,(startOfChunk + i),0);
+			}
+		}
+		current +=1;
 	}
 	os_leaveCriticalSection();
 }
+
+
 
 
 	

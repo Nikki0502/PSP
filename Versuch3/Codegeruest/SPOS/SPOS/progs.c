@@ -1,9 +1,10 @@
 //-------------------------------------------------
-//          TestTask: Stability Private
+//          TestTask: Heap Cleanup
 //-------------------------------------------------
 
 #include "lcd.h"
 #include "os_core.h"
+#include "os_input.h"
 #include "os_memory.h"
 #include "os_scheduler.h"
 #include "util.h"
@@ -17,219 +18,465 @@
 #endif
 
 //---- Adjust here what to test -------------------
+//! This flag defines if phase 1 of this test is executed
+#define PHASE_1 1
+//! This flag defines if phase 2 of this test is executed
+#define PHASE_2 1
+//! This flag defines if phase 3 of this test is executed
+#define PHASE_3 1
+//! This flag defines if phase 4 of this test is executed
+#define PHASE_4 1
+//! Number of heap-drivers that are to be tested
+#define DRIVERS os_getHeapListLength()
+//! Test if all heaps are used. Should be 1 for V3 and 2 in V4
 #define HEAP_COUNT 1
-#define PROCESS_NUMBER 3
-#define TEST_OS_MEM_FIRST 1
-#define TEST_OS_MEM_NEXT 0  // Optional in Versuch 3
-#define TEST_OS_MEM_BEST 0  // Optional in Versuch 3
-#define TEST_OS_MEM_WORST 0 // Optional in Versuch 3
+//! The default memory allocation strategy for phase 3
+#define DEFAULT_ALLOC_STRATEGY OS_MEM_FIRST
+//! This flag decides if the first fit allocation strategy is tested
+#define CHECK_FIRST 1
+//! This flag decides if the next fit allocation strategy is tested
+#define CHECK_NEXT 1
+//! This flag decides if the best fit allocation strategy is tested
+#define CHECK_BEST 1
+//! This flag decides if the worst fit allocation strategy is tested
+#define CHECK_WORST 1
+//! Number of runs of swarm-allocations that are to be performed. Usually 400
+#define RUNS 400
+//! A reasonable implementation does not take longer than this, but adjust if not sufficient
+#define SOFT_TIMEOUT (2 * 60) // seconds
 //-------------------------------------------------
+
+//! The test is not allowed to take longer
+#define HARD_TIMEOUT (10 * 60) // seconds
 
 #ifndef WRITE
 #define WRITE(str) lcd_writeProgString(PSTR(str))
 #endif
 #define TEST_PASSED                    \
-do {                               \
-	ATOMIC {                       \
-		lcd_clear();               \
-		WRITE("  TEST PASSED   "); \
-	}                              \
-} while (0)
+    do {                               \
+        ATOMIC {                       \
+            lcd_clear();               \
+            WRITE("  TEST PASSED   "); \
+        }                              \
+    } while (0)
 #define TEST_FAILED(reason)  \
-do {                     \
-	ATOMIC {             \
-		lcd_clear();     \
-		WRITE("FAIL  "); \
-		WRITE(reason);   \
-	}                    \
-} while (0)
+    do {                     \
+        ATOMIC {             \
+            lcd_clear();     \
+            WRITE("FAIL  "); \
+            WRITE(reason);   \
+        }                    \
+    } while (0)
+#ifndef CONFIRM_REQUIRED
+#define CONFIRM_REQUIRED 1
+#endif
 
-// Handy error message define
+
 #define TEST_FAILED_AND_HALT(reason) \
-do ATOMIC {                      \
-	TEST_FAILED(reason);     \
-	HALT;                    \
-}                            \
-while (0)
+    do {                             \
+        ATOMIC {                     \
+            TEST_FAILED(reason);     \
+            HALT;                    \
+        }                            \
+    } while (0)
 
+#define TEST_FAILED_HEAP_AND_HALT(reason, heap) \
+    do {                                        \
+        ATOMIC {                                \
+            TEST_FAILED(reason " ");            \
+            lcd_writeProgString((heap)->name);  \
+            HALT;                               \
+        }                                       \
+    } while (0)
 
-static uint8_t processCount = 0;
+//! ProcessID of small allocation process
+volatile ProcessID allocProc = 0;
+//! This variable is set to 1 when the small allocation process is finished
+volatile uint8_t allocProcReadyToDie = 0;
+//! This variable is set to true when the test program finishes
+bool terminated = false;
 
-//! This program prints the current time in the first line.
-REGISTER_AUTOSTART(program4)
-void program4(void) {
-	while (1) {
-		os_enterCriticalSection();
-		lcd_line1();
-		lcd_writeProgString(PSTR("Time: "));
-		const Time msecs = os_systemTime_coarse();
-		const uint16_t secs = TIME_MS_TO_S(msecs);
-		const uint16_t mins = TIME_MS_TO_M(msecs);
-		if (mins < 100) {
-			lcd_writeDec(mins);
-			lcd_writeChar('m');
-			lcd_writeChar(' ');
-			lcd_writeDec(secs % 60);
-			lcd_writeChar('.');
-			lcd_writeDec(msecs / 100 % 10);
-			lcd_writeChar('s');
-			lcd_writeChar(' ');
-			} else {
-			lcd_writeProgString(PSTR("> 100 min"));
-		}
-		if (mins >= 3) {
-			if (processCount != PROCESS_NUMBER) {
-				TEST_FAILED_AND_HALT("Invalid process count");
-			}
-			ATOMIC {
-				TEST_PASSED;
-				HALT;
-			}
-		}
-		os_leaveCriticalSection();
-		delayMs(DEFAULT_OUTPUT_DELAY);
-	}
+/*!
+ * Swarm allocation program. This program tries to allocate all bytes in
+ * every heap. This is done by allocating less and less memory in each step.
+ * Due to this other processes will be able to allocate memory, too. This
+ * yields a very fragmented memory.
+ */
+void swarm_alloc_program(void) {
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        Heap *heap = os_lookupHeap(i);
+        // The number 4 is a heuristic. We expect the ram not to be that
+        // fragmented.
+        uint16_t max = 1024 / (MAX_NUMBER_OF_PROCESSES - 3) / 4;
+        while (max) {
+            // Allocate less and less memory with every step
+            const uint16_t sz = (max + 1) / 2;
+            max -= sz;
+            os_malloc(heap, sz);
+        }
+    }
 }
 
-//! Writes characters consecutively into the second line of the LCD
-void writeChar(char c) {
-	static unsigned char pos = 16;
-	os_enterCriticalSection();
-	// Clear line if full
-	if (++pos > 16) {
-		pos = 1;
-		lcd_line2();
-		lcd_writeProgString(PSTR("                "));
-	}
-	lcd_goto(2, pos);
-	lcd_writeChar(c);
-	os_leaveCriticalSection();
+/*!
+ * Small allocation program that tries to allocate 2 times 4 bytes on every
+ * heap. After that it signals that it is finished and it waits in an infinite
+ * loop until it is externally killed.
+ */
+void small_alloc_program(void) {
+    allocProc = os_getCurrentProc();
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        os_malloc(os_lookupHeap(i), 4);
+        os_malloc(os_lookupHeap(i), 4);
+    }
+    allocProcReadyToDie = 1;
+    HALT;
 }
 
-//! Prints the status of the process
-void printPhase(uint8_t id, char phase) {
-	os_enterCriticalSection();
-	writeChar(id + '0');
-	writeChar(phase);
-	writeChar(' ');
-	os_leaveCriticalSection();
+/*!
+ * Starts the small allocation process and waits until it finished its
+ * allocations.
+ */
+void hc_startSmallAllocator(void) {
+    allocProcReadyToDie = 0;
+    os_exec(small_alloc_program, DEFAULT_PRIORITY);
+    while (!allocProcReadyToDie) {
+        // wait until the allocation process allocated its memory
+    }
 }
 
-#define SZ 6
-
-void makeCheck(uint8_t id, uint16_t mod, MemValue pat[SZ]) {
-	uint16_t sizes[SZ * HEAP_COUNT];
-	MemAddr sizedChunks[SZ * HEAP_COUNT];
-
-	// Alloc chunks and test if they are within the valid range.
-	// Then write the corresponding number from the pattern into them.
-	printPhase(id, 'a');
-	for (uint8_t i = 0; i < SZ; i++) {             // Chunk
-		for (uint8_t j = 0; j < HEAP_COUNT; j++) { // Heap
-			Heap *heap = os_lookupHeap(j);
-			sizes[i + SZ * j] = (TCNT0 % (mod * (j + 1))) + 1; // Get sizes from timer counter
-			sizedChunks[i + SZ * j] = os_malloc(heap, sizes[i + SZ * j]);
-			if (sizedChunks[i + SZ * j] < os_getUseStart(heap)) {
-				TEST_FAILED_AND_HALT("Address too small");
-			}
-			if (sizedChunks[i + SZ * j] + sizes[i + SZ * j] > (os_getUseStart(heap) + os_getUseSize(heap))) { // This is NO off-by-one!
-				TEST_FAILED_AND_HALT("Address too large");
-			}
-			for (uint16_t k = 0; k < sizes[i + SZ * j]; k++) {
-				heap->driver->write(sizedChunks[i + SZ * j] + k, pat[i]);
-			}
-		}
-	}
-
-	// Just...wait.
-	printPhase(id, 'b');
-	delayMs(10 * DEFAULT_OUTPUT_DELAY);
-
-	// Are the correct numbers still contained in the right chunks?
-	printPhase(id, 'c');
-	for (uint8_t i = 0; i < SZ; i++) {
-		for (uint8_t j = 0; j < HEAP_COUNT; j++) {
-			Heap *heap = os_lookupHeap(j);
-			for (uint16_t k = 0; k < sizes[i + SZ * j]; k++) {
-				if (heap->driver->read(sizedChunks[i + SZ * j] + k) != pat[i]) {
-					if (j == 0) {
-						TEST_FAILED_AND_HALT("Pattern mismatch internal");
-						} else {
-						TEST_FAILED_AND_HALT("Pattern mismatch external");
-					}
-				}
-			}
-		}
-	}
-	delayMs(DEFAULT_OUTPUT_DELAY);
-
-	// Free all chunks.
-	printPhase(id, 'd');
-	for (uint8_t i = 0; i < SZ; i++) {
-		for (uint8_t j = 0; j < HEAP_COUNT; j++) {
-			Heap *heap = os_lookupHeap(j);
-			os_free(heap, sizedChunks[i + SZ * j]);
-		}
-	}
+/*!
+ * Kills the small allocation process.
+ */
+void hc_killSmallAllocator(void) {
+    os_kill(allocProc);
 }
 
-//! Main test program.
-REGISTER_AUTOSTART(program1)
-void program1(void) {
+/*!
+ * Checks if a free process slot exists
+ */
+static bool hc_hasFreeProcSlot(void) {
+    for (ProcessID pid = 0; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
+        if (os_getProcessSlot(pid)->state == OS_PS_UNUSED) return true;
+    }
+    return false;
+}
 
-	// First spawn consecutively numbered instances of this program.
-	// Having increasing priority.
-	uint8_t me = ++processCount;
-	if (me < PROCESS_NUMBER) {
-		os_exec(program1, me * 20);
-	}
+/*!
+ * Starts as many processes of the swarm-allocation program as possible.
+ */
+void hc_startAllocatorSwarm(void) {
+    while (hc_hasFreeProcSlot()) {
+        os_exec(swarm_alloc_program, DEFAULT_PRIORITY);
+    }
+}
 
-	// Create a characteristic pattern (number sequence) for each instance.
-	MemValue pat[SZ];
-	for (uint8_t i = 0; i < SZ; i++) {
-		pat[i] = me * SZ + i;
-	}
+/*!
+ * Waits until all started swarm-processes are dead.
+ */
+void hc_waitForSwarmKill(void) {
+    uint8_t num;
+    do {
+        num = 0;
+        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
+            if (os_getProcessSlot(pid)->state != OS_PS_UNUSED) num++;
+        }
+    } while (num > 1); // 1 main test-process
+}
 
-	// Prepare AllocStrats and cycle through them endlessly while
-	// doing stability checks.
-	uint8_t checkCount = 0, strategyId = 0;
-	struct {
-		AllocStrategy strat;
-		char name;
-		} cycle[] = {
-		#if TEST_OS_MEM_FIRST
-		{.strat = OS_MEM_FIRST, .name = 'F'},
-		#endif
-		#if TEST_OS_MEM_NEXT
-		{ .strat = OS_MEM_NEXT, .name = 'N'},
-		#endif
-		#if TEST_OS_MEM_BEST
-		{ .strat = OS_MEM_BEST, .name = 'B'},
-		#endif
-		#if TEST_OS_MEM_WORST
-		{.strat = OS_MEM_WORST, .name = 'W'},
-		#endif
-	};
-	const uint8_t cycleSize = sizeof(cycle) / sizeof(*cycle);
-	while (1) {
-		// One process changes the allocation strategy periodically
-		if (me == 1 && !(checkCount++ % 8)) {
-			os_enterCriticalSection();
-			lcd_clear();
-			delayMs(3 * DEFAULT_OUTPUT_DELAY);
-			lcd_writeProgString(PSTR("Change to "));
-			lcd_writeChar(cycle[strategyId].name);
-			delayMs(5 * DEFAULT_OUTPUT_DELAY);
-			for (uint8_t j = 0; j < HEAP_COUNT; j++) {
-				Heap *heap = os_lookupHeap(j);
-				os_setAllocationStrategy(heap, cycle[strategyId].strat);
-			}
-			delayMs(3 * DEFAULT_OUTPUT_DELAY);
-			lcd_clear();
-			strategyId = (strategyId + 1) % cycleSize;
-			os_leaveCriticalSection();
-		}
+/*!
+ * Waits until a process-slot is free.
+ */
+void hc_waitForFreeProcSlot(void) {
+    while (!hc_hasFreeProcSlot()) continue;
+}
 
-		makeCheck(me, me * 5, pat);
-	}
+//! Main test routine. Executes the single phases.
+REGISTER_AUTOSTART(main_program)
+void main_program(void) {
+    // Init Timeout Timer 1
+    // CTC mode
+    TCCR1A &= ~(1 << WGM10);
+    TCCR1A &= ~(1 << WGM11);
+    TCCR1B |= (1 << WGM12);
+    TCCR1B &= ~(1 << WGM13);
+
+    // set prescaler to 1024
+    TCCR1B |= (1 << CS12) | (1 << CS10);
+    TCCR1B &= ~(1 << CS11);
+
+    // set compare register -> match every 1s
+    OCR1A = 19531;
+
+    // enable timer
+    TIMSK1 |= (1 << OCIE1A);
+
+    // Check if heaps are defined correctly
+    if (DRIVERS < HEAP_COUNT) {
+        TEST_FAILED_AND_HALT("Missing heap");
+    }
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        for (uint8_t j = i + 1; j < DRIVERS; j++) {
+            if (os_lookupHeap(i) == os_lookupHeap(j)) {
+                TEST_FAILED_AND_HALT("Missing heap");
+            }
+        }
+    }
+
+// 1. Phase: Test if you can over-allocate memory
+#if PHASE_1
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 1:"));
+    lcd_line2();
+    lcd_writeProgString(PSTR("Overalloc     "));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+    // First allocate a small amount of memory on each heap. This should make
+    // it impossible to allocate the whole use size in the next step
+    hc_startSmallAllocator();
+    // Then we try to alloc all the memory on one heap. If it works, the
+    // student's solution is faulty.
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        Heap *heap = os_lookupHeap(i);
+        uint16_t total = os_getUseSize(heap);
+        if (os_malloc(heap, total)) {
+            TEST_FAILED_HEAP_AND_HALT("Overalloc fail", heap);
+        }
+    }
+    hc_killSmallAllocator();
+
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+#endif
+
+// 2. Phase: Settings test: Check if heap is set up correctly
+#if PHASE_2
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 2:"));
+    lcd_line2();
+    lcd_writeProgString(PSTR("Heap settings "));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+    // This address is certainly in the stacks.
+    MemValue *startOfStacks = (uint8_t *)((AVR_MEMORY_SRAM / 2) + AVR_SRAM_START);
+
+    /*
+     * If we allocate all the memory and write in it, we should not be able to
+     * write into that stack memory. If we can, the internal heap is initialized
+     * with wrong settings
+     */
+    os_setAllocationStrategy(intHeap, OS_MEM_FIRST);
+    MemAddr hugeChunk = os_malloc(intHeap, os_getUseSize(intHeap));
+    if (!hugeChunk) {
+        TEST_FAILED_HEAP_AND_HALT("f:Huge alloc fail", intHeap);
+    }
+
+    /*
+     * We will now write a pattern into RAM and check if they change the
+     * contents of the stack. To check that, we check the top of the stack of
+     * process 8. This can be done because there is no process 8
+     */
+    *startOfStacks = 0x00;
+    for (MemAddr currentAddress = hugeChunk; currentAddress < hugeChunk + os_getUseSize(intHeap); currentAddress++) {
+        intHeap->driver->write(currentAddress, 0xFF);
+    }
+
+    if (*startOfStacks != 0x00) {
+        TEST_FAILED_AND_HALT("Internal heap too large");
+    }
+
+    // Clean up
+    os_free(intHeap, hugeChunk);
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+#endif
+
+// 3. Phase: Check if we can allocate the whole use-area after killing a RAM-hogger
+#if PHASE_3
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 3:"));
+    lcd_line2();
+    lcd_writeProgString(PSTR("Huge alloc    "));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        Heap *heap = os_lookupHeap(i);
+        MemAddr hugeChunk;
+
+        /*
+         * For each allocation strategy the following two steps are executed
+         * 1. Make a RAM-hogger and kill it, such that the heap-cleaner should
+         *    have freed its memory
+         * 2. Test if this is correct with a certain strategy
+         */
+
+        lcd_goto(1, 11);
+        lcd_writeDec(i);
+        lcd_writeProgString(PSTR(":    "));
+        lcd_goto(1, 13);
+#if CHECK_BEST
+        lcd_writeChar('b');
+        hc_startSmallAllocator();
+        hc_killSmallAllocator();
+        os_setAllocationStrategy(heap, OS_MEM_BEST);
+        hugeChunk = os_malloc(heap, os_getUseSize(heap));
+        if (!hugeChunk) {
+            TEST_FAILED_HEAP_AND_HALT("b:Huge alloc fail", heap);
+        } else {
+            os_free(heap, hugeChunk);
+        }
+#endif
+
+#if CHECK_WORST
+        lcd_writeChar('w');
+        hc_startSmallAllocator();
+        hc_killSmallAllocator();
+        os_setAllocationStrategy(heap, OS_MEM_WORST);
+        hugeChunk = os_malloc(heap, os_getUseSize(heap));
+        if (!hugeChunk) {
+            TEST_FAILED_HEAP_AND_HALT("w:Huge alloc fail", heap);
+        } else {
+            os_free(heap, hugeChunk);
+        }
+#endif
+
+#if CHECK_FIRST == 1
+        lcd_writeChar('f');
+        hc_startSmallAllocator();
+        hc_killSmallAllocator();
+        os_setAllocationStrategy(heap, OS_MEM_FIRST);
+        hugeChunk = os_malloc(heap, os_getUseSize(heap));
+        if (!hugeChunk) {
+            TEST_FAILED_HEAP_AND_HALT("f:Huge alloc fail", heap);
+        } else {
+            os_free(heap, hugeChunk);
+        }
+#endif
+
+#if CHECK_NEXT == 1
+        lcd_writeChar('n');
+        hc_startSmallAllocator();
+        hc_killSmallAllocator();
+        os_setAllocationStrategy(heap, OS_MEM_NEXT);
+        hugeChunk = os_malloc(heap, os_getUseSize(heap));
+        if (!hugeChunk) {
+            TEST_FAILED_HEAP_AND_HALT("n:Huge alloc fail", heap);
+        } else {
+            os_free(heap, hugeChunk);
+        }
+#endif
+    }
+
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+#endif
+
+// 4. Phase: Main test: Check if heap is cleaned up
+#if PHASE_4
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 4:"));
+    lcd_line2();
+    lcd_writeProgString(PSTR("Heap Cleanup  "));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+    // We want to use the default strategy on every heap. After phase 2 we
+    // cannot know which strategy was last used.
+    for (uint8_t i = 0; i < DRIVERS; i++) {
+        os_setAllocationStrategy(os_lookupHeap(i), DEFAULT_ALLOC_STRATEGY);
+    }
+
+    /*
+     * In this phase a swarm of allocation-process is started. These processes
+     * terminate. Thus heap-cleanup should be performed. Whenever a process
+     * terminates, a new one is started in his stead. Every 50 steps we will
+     * check, if the cleanup was successful.
+     */
+    hc_startAllocatorSwarm();
+
+    const uint16_t totalRuns = RUNS;
+
+    for (uint16_t runs = 0; runs < totalRuns; runs++) {
+        // Every run we start a new allocator and give it some time to allocate
+        // memory
+        hc_waitForFreeProcSlot();
+
+        os_exec(swarm_alloc_program, DEFAULT_PRIORITY);
+        delayMs(DEFAULT_OUTPUT_DELAY);
+
+
+        lcd_drawBar((100 * runs) / totalRuns);
+        lcd_goto(2, 6);
+        lcd_writeDec(runs + 1);
+        lcd_writeChar('/');
+        lcd_writeDec(totalRuns);
+
+        /*
+         * Every 50 steps we test if the memory get freed correctly after a
+         * kill. For that, we wait for every big allocator to get killed and
+         * then check if the whole memory is free again
+         */
+        if ((runs + 1) % 50 == 0) {
+            hc_waitForSwarmKill();
+            for (uint8_t i = 0; i < DRIVERS; i++) {
+                Heap *heap = os_lookupHeap(i);
+                MemAddr hugeChunk = os_malloc(heap, os_getUseSize(heap));
+                if (!hugeChunk) {
+                    // We could not allocate all the memory on that heap, so there was
+                    // a leak
+                    TEST_FAILED_HEAP_AND_HALT("Heap not clean:", heap);
+                } else {
+                    os_free(heap, hugeChunk);
+                }
+            }
+            // Since we killed the whole swarm, we have to revive it again before
+            // we jump back to our loop
+            hc_startAllocatorSwarm();
+        }
+    }
+    hc_waitForSwarmKill();
+
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 4:"));
+    lcd_line2();
+    lcd_writeProgString(PSTR("Heap Cleanup  "));
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+
+#endif
+
+    terminated = true;
+
+// SUCCESS
+#if CONFIRM_REQUIRED
+    lcd_clear();
+    lcd_writeProgString(PSTR("  PRESS ENTER!  "));
+    os_waitForInput();
+    os_waitForNoInput();
+#endif
+    TEST_PASSED;
+    lcd_line2();
+    lcd_writeProgString(PSTR(" WAIT FOR IDLE  "));
+    delayMs(DEFAULT_OUTPUT_DELAY * 6);
+}
+
+/*
+ *	Timeout ISR
+ */
+ISR(TIMER1_COMPA_vect) {
+    // counts seconds
+    static int16_t timeout_counter = 0;
+    if (terminated) return;
+    timeout_counter++;
+
+    if (timeout_counter >= HARD_TIMEOUT) {
+        TEST_FAILED("Test took too long!");
+        HALT;
+    }
+
+    if (timeout_counter >= SOFT_TIMEOUT) {
+        TEST_FAILED("Test reached soft timeout!");
+        HALT;
+    }
 }

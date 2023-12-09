@@ -373,18 +373,19 @@ bool os_kill(ProcessID pid){
 	os_enterCriticalSection();
 	// Versuchte Term des Idle oder falsche pid
 	if(pid==0 || pid>= MAX_NUMBER_OF_PROCESSES){
+		os_leaveCriticalSection();
 		return false;
 	}
 	//hier muss noch irgendwo diese Crit Section Verlassen werden aber idk FRAGE
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;
-	//os_freeProcessMemory(intHeap,pid);
+	os_freeProcessMemory(intHeap,pid);
 	
 	
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler
 	os_leaveCriticalSection();
-	if(pid==currentProc&& criticalSectionCount >0){
+	if (pid==currentProc && criticalSectionCount >0){
 		os_leaveCriticalSection();
 	}
 	while(pid==currentProc){}
