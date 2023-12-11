@@ -74,7 +74,20 @@ MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 }
 //W‰ht den kleinsten freien Speicherblock aus, der groﬂ genug ist
 MemAddr os_Memory_BestFit (Heap *heap, size_t size){
-	return 0;
+	MemAddr current = os_getUseStart(heap);
+	MemAddr smallestChunkLeader= 0;
+	size_t smallestSize=0;
+	while(current < ( os_getUseStart(heap) + os_getUseSize(heap) ) ){
+		if(os_getMapEntry(heap, current) == 0 ){
+			if( (os_getFreeChunkSize(heap,current) < smallestSize) && (os_getFreeChunkSize(heap,current) >= size) ){
+			smallestChunkLeader = os_getFirstByteOfFree(heap,current);
+			smallestSize = os_getFreeChunkSize(heap,current);
+			current+= smallestSize;
+			}
+		}
+		current += 1;
+	}
+	return smallestChunkLeader;
 }
 
 
