@@ -158,6 +158,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	switch (os_getAllocationStrategy(heap)){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
+		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size); break;
 		default: firstChunkAddrUser= 0;
 	}
 	//falls kein Speicherblock gefunden werden konnte

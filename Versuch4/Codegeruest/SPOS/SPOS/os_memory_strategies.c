@@ -6,6 +6,8 @@
  */ 
 
 #include "os_memory.h"
+#include <stdbool.h>
+
 //Gibt die erste Speicheradresse von einem freien Block zur¸ck
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x00 && userAddr>=os_getUseStart(heap)){
@@ -75,19 +77,32 @@ MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 //W‰ht den kleinsten freien Speicherblock aus, der groﬂ genug ist
 MemAddr os_Memory_BestFit (Heap *heap, size_t size){
 	MemAddr current = os_getUseStart(heap);
-	MemAddr smallestChunkLeader= 0;
-	size_t smallestSize=0;
-	while(current < ( os_getUseStart(heap) + os_getUseSize(heap) ) ){
-		if(os_getMapEntry(heap, current) == 0 ){
-			if( (os_getFreeChunkSize(heap,current) < smallestSize) && (os_getFreeChunkSize(heap,current) >= size) ){
-			smallestChunkLeader = os_getFirstByteOfFree(heap,current);
-			smallestSize = os_getFreeChunkSize(heap,current);
-			current+= smallestSize;
+	MemAddr bestChunkLeader = 0;
+	size_t bestSize =0;
+	bool found = false;
+	while(current < (os_getUseStart(heap) + os_getUseSize(heap))){
+		if(os_getMapEntry(heap,current) == 0){
+			if(os_getFreeChunkSize(heap,current) == size){
+				return os_getFirstByteOfFree(heap,current);
+			}
+			if(bestChunkLeader != 0){
+				if(os_getFreeChunkSize(heap,current) < bestSize && os_getFreeChunkSize(heap,current) >= size){
+					bestChunkLeader = os_getFirstByteOfFree(heap,current);
+					bestSize = os_getFreeChunkSize(heap,current);
+					current += bestSize;
+				}
+			}
+			else{
+				if(os_getFreeChunkSize(heap,current) >= size ){
+					bestChunkLeader = os_getFirstByteOfFree(heap,current);
+					bestSize = os_getFreeChunkSize(heap,current);
+					current += bestSize;
+				}
 			}
 		}
 		current += 1;
 	}
-	return smallestChunkLeader;
+		return bestChunkLeader;
 }
 
 
