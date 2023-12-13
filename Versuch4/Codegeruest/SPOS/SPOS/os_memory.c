@@ -203,6 +203,7 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 			MemAddr startOfChunk = current;
 			uint16_t sizeOfChunk = os_getChunkSize(heap,startOfChunk);
 			os_setMapAddrValue(heap,startOfChunk,0);
+			// i < sizeOfChunk?
 			for (uint16_t i =1; i <= sizeOfChunk ; i++){
 				os_setMapAddrValue(heap,(startOfChunk + i),0);
 			}
