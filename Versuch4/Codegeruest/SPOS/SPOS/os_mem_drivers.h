@@ -12,14 +12,9 @@
 #include <stdint.h>
 
 //Datentypen
-
-
 typedef uint16_t MemAddr; //Adresse auf SRAM
-
 typedef uint8_t MemValue; //Wwet der Adresse
-
 //Driver
-
 typedef struct{
 	MemAddr startAddr;
 	MemAddr endAddr;
@@ -28,10 +23,8 @@ typedef struct{
 	void (*write)(MemAddr,MemValue); //Wer den MemAddr referenziert ändern
 	//char name[];
 }MemDriver;
-
 //intSRAM Pointer 
 MemDriver intSRAM__;
 #define intSRAM (&intSRAM__)
-
 
 #endif /* OS_MEM_DRIVERS_H_ */
