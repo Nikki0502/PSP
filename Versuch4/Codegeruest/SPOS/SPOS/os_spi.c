@@ -36,7 +36,7 @@ uint8_t os_spi_send(uint8_t data){
 	// SPI Data Register (SPDR) setzen
 	SPDR = data; 
 	// warten auf ende der uebertragung singaliesert von SPIF 
-	while((SPSR & 0b10000000) != 0){
+	while((SPSR & 0b10000000) == 0){
 	}
 	uint8_t byte_from_slave = SPDR;
 	os_leaveCriticalSection();
