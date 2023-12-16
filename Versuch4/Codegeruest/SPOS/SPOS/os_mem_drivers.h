@@ -27,4 +27,7 @@ typedef struct{
 MemDriver intSRAM__;
 #define intSRAM (&intSRAM__)
 
+MemDriver extSRAM__;
+#define extSRAM (&extSRAM__)
+
 #endif /* OS_MEM_DRIVERS_H_ */

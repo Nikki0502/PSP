@@ -5,8 +5,11 @@
  *  Author: va675332
  */ 
 
+
 #include "os_memory.h"
 #include <stdbool.h>
+
+MemAddr lastAllocChunkLeader; //Globale Variable für Next Fit
 
 //Gibt die erste Speicheradresse von einem freien Block zurück
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
@@ -52,6 +55,7 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 }
 
 MemAddr os_Memory_NextFit (Heap *heap, size_t size){
+	
 	return 0;
 }
 //Wählt den größten freien Speicherblock aus, der groß genug ist

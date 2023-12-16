@@ -24,6 +24,19 @@ Heap intHeap__= {
 		.name = "HEAP"
 	};
 
+//Heap struct mit charakteristischen Attributen
+//0xFFF = Speichergröße
+Heap extHeap__ = {
+	.driver = extSRAM,
+	.sizeHeap = (size_t)(0xF9F),
+	.sizeMap = (size_t)(0xF9F * 1.0/3.0),
+	.sizeUser = (size_t)(0xF9F * 2.0/3.0),
+	.startaddrMap= (MemAddr)(0xF9F * 1.0/3.0),
+	.startaddrUse= (MemAddr)(0xF9F * 2.0/3.0),
+	.currentStrat = OS_MEM_FIRST,
+	.name = "extHeap"
+};
+
 //Initialisiert die Map(setzt alle Einträge auf 0(unused))
 void os_initHeaps(void){
 	for (size_t i= 0; i<intHeap__.sizeMap ;i++){

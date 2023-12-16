@@ -8,6 +8,7 @@
 #include "atmega644constants.h"
 #include "util.h"
 #include "defines.h"
+#include "os_spi.h"
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
@@ -28,6 +29,24 @@ void write_Internal(MemAddr addr , MemValue value){
 	*pointer = value;
 }
 
+void Init_External(void){
+	os_spi_int();
+     //extSRAM soll kein slave sein
+	 
+	 //Byte Operationen aktivieren mit Write Mode Register
+	os_spi_send(0b00000001); //Write MODE Register
+	os_spi_send(0b00000000);
+	 
+	
+}
+
+MemValue read_External(MemAddr addr){
+	
+}
+
+void write_External(MemAddr addr, MemValue value){
+	
+}
 //Driver intSRAM init 
 MemDriver intSRAM__ = {
 	.startAddr = 0x100 + HEAPOFFSET,
@@ -36,6 +55,14 @@ MemDriver intSRAM__ = {
 	.read = read_Internal,
 	.write = write_Internal
 	//.name = "SRAM"
+};
+//Driver extSRAM
+MemDriver extSRAM__ = {
+	.startAddr = 0x0,
+	.endAddr = 0xF9F, //64000 bit / 16 bit Adressen == 4000 Adressen also letzte Adresse = 3999
+	.init = Init_External,
+	.read = read_External,
+	.write = write_External,
 };
 	
 
