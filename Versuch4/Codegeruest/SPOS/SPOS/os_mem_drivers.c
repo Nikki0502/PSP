@@ -9,12 +9,47 @@
 #include "util.h"
 #include "defines.h"
 #include "os_spi.h"
+#include "os_scheduler.h"
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
 
-//Funktionen des MemDriver-Types(init,read,write)
+#define WRMR 0x01 // Write Mode Register
+#define READ 0x03 // Read data from memory array beginning at selected address
+#define WRITE 0x02 // Write data to memory array beginning at selected address
+#define ByteMode 0x0 // Bitweiser modus
 
+// Hilfsfunktionenn
+// Activates the external SRAM as SPI slave. 
+void select_memory (){
+	// by bringing CS low 
+	DDRB &=  0b11110111;
+}
+// Deactivates the external SRAM as SPI slave. 
+void deselect_memory (){
+	// by bringing CS high
+	DDRB |=  0b00001000;
+}
+// Sets the operation mode of the external SRAM.
+void set_operation_mode (uint8_t mode){
+	os_enterCriticalSection();
+	select_memory();
+	os_spi_send(WRMR);
+	os_spi_send(mode);
+	deselect_memory();
+	os_leaveCriticalSection();
+}
+// Transmitts a 24bit memory address to the external SRAM.
+void transfer_address (MemAddr addr){
+	// sendet die 7 idk bits und noch ein leeres bit, da wir nicht den ganzen speicher nutzen
+	os_spi_send(0x0);
+	// sendet eigentliche addr
+	os_spi_send(addr>>8);
+	os_spi_send((uint8_t)addr);
+}
+
+// Funktionen des MemDriver-Types(init,read,write)
+// Interner SRAM
 void init_Internal(void){
 }
 //Gibt den Wert an der übergebenen Adresse zurück
@@ -29,38 +64,51 @@ void write_Internal(MemAddr addr , MemValue value){
 	*pointer = value;
 }
 
-void Init_External(void){
+// Externer SRAM
+void init_External(void){	
+	// SPI-Modul aktiviert werden
 	os_spi_int();
-     //extSRAM soll kein slave sein
-	 
-	 //Byte Operationen aktivieren mit Write Mode Register
-	os_spi_send(0b00000001); //Write MODE Register
-	os_spi_send(0b00000000);
-	 
-	
+	// gf. weitere Steuerleitungen konfiguriert werden?????
+	// SRAM nicht als SPI-Slave selektiert ist
+	deselect_memory();
+	// byteweisen Zugriffsmodus
+	set_operation_mode(ByteMode);
 }
 
 MemValue read_External(MemAddr addr){
-	return 0;
+	os_enterCriticalSection();
+	select_memory();
+	os_spi_send(READ);
+	transfer_address(addr);
+	uint8_t data = os_spi_receive();
+	deselect_memory();
+	os_leaveCriticalSection();
+	return data;
 }
 
 void write_External(MemAddr addr, MemValue value){
-	
+	os_enterCriticalSection();
+	select_memory();
+	os_spi_send(WRITE);
+	transfer_address(addr);
+	os_spi_send(value);
+	os_leaveCriticalSection();
+	deselect_memory();
 }
-//Driver intSRAM init 
+
+//Driver intSRAM  
 MemDriver intSRAM__ = {
 	.startAddr = 0x100 + HEAPOFFSET,
 	.endAddr = 0x10FF,
 	.init = init_Internal,
 	.read = read_Internal,
 	.write = write_Internal
-	//.name = "SRAM"
 };
 //Driver extSRAM
 MemDriver extSRAM__ = {
 	.startAddr = 0x0,
-	.endAddr = 0xF9F, //64000 bit / 16 bit Adressen == 4000 Adressen also letzte Adresse = 3999
-	.init = Init_External,
+	.endAddr = 0xFFFF, // da 64 KiB = 64*1024 Byte und noch -1 wegen start 0
+	.init = init_External,
 	.read = read_External,
 	.write = write_External,
 };

@@ -8,7 +8,7 @@
 #include "atmega644constants.h"
 #include "os_scheduler.h"
 void os_spi_int(void){
-	// B7 = CLK, B6 = MISO, B5 = MOSI, B4 = \CS, B3 = SIO2
+	// B7 = CLK, B6 = MISO, B5 = MOSI, B4 = \CS, B3 = SIO2(Nicht für den Versuch relevant)
 	DDRB |=  0b10101000;
 	PORTB |= 0b01000000;
 	// SPI Register 
