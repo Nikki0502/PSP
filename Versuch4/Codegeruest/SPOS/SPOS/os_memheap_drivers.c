@@ -28,11 +28,11 @@ Heap intHeap__= {
 //0xFFF = Speichergröße
 Heap extHeap__ = {
 	.driver = extSRAM,
-	.sizeHeap = (size_t)(0xF9F),
-	.sizeMap = (size_t)(0xF9F * 1.0/3.0),
-	.sizeUser = (size_t)(0xF9F * 2.0/3.0),
-	.startaddrMap= (MemAddr)(0xF9F * 1.0/3.0),
-	.startaddrUse= (MemAddr)(0xF9F * 2.0/3.0),
+	.sizeHeap = (size_t)(0xFFFF),
+	.sizeMap = (size_t)(((0xFFFF)/3)*1),
+	.sizeUser = (size_t)(((0xFFFF)/3)*2),
+	.startaddrMap= (MemAddr)(0x0),
+	.startaddrUse= (MemAddr)(((0xFFFF)/3)),
 	.currentStrat = OS_MEM_FIRST,
 	.name = "extHeap"
 };
@@ -45,8 +45,12 @@ void os_initHeaps(void){
 }
 
 size_t os_getHeapListLength(void){
-	return 1;
+	// ???
+	return 2;
 }
 Heap* os_lookupHeap(uint8_t index){
+	if (index == 1){
+		return extHeap;
+	}
 	return intHeap;
 }
