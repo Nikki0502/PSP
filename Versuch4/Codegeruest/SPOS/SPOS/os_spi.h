@@ -5,6 +5,7 @@
  *  Author: nicki
  */ 
 
+#include <stdint.h> 
 
 #ifndef OS_SPI_H_
 #define OS_SPI_H_

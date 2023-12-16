@@ -5,7 +5,8 @@
  *  Author: trisi
  */ 
 #include "os_spi.h"
-
+#include "atmega644constants.h"
+#include "os_scheduler.h"
 void os_spi_int(void){
 	// B7 = CLK, B6 = MISO, B5 = MOSI, B4 = \CS, B3 = SIO2
 	DDRB |=  0b10101000;
