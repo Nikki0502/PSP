@@ -41,7 +41,7 @@ void Init_External(void){
 }
 
 MemValue read_External(MemAddr addr){
-	
+	return 0;
 }
 
 void write_External(MemAddr addr, MemValue value){

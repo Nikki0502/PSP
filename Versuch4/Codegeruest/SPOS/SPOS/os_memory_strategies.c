@@ -47,6 +47,7 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 		}
 		current +=1;
 		if(index==size){
+			lastAllocChunkLeader = current - size;
 			return (current - size);
 		}
 		
@@ -55,8 +56,40 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 }
 
 MemAddr os_Memory_NextFit (Heap *heap, size_t size){
-	
+	MemAddr current = lastAllocChunkLeader + os_getChunkSize(heap,lastAllocChunkLeader);
+	uint16_t index = 0;
+	while(current<(os_getUseStart(heap)+os_getUseSize(heap))){
+		if(os_getMapEntry(heap,current)==0){
+			index +=1;
+		}
+		else{
+			index = 0;
+		}
+		current +=1;
+		if(index==size){
+			lastAllocChunkLeader = current - size;
+			return (current - size);
+		}
+		
+	}
+	index = 0;
+	current = os_getUseStart(heap);
+	while(current< lastAllocChunkLeader){
+		if(os_getMapEntry(heap,current)==0){
+			index +=1;
+		}
+		else{
+			index = 0;
+		}
+		current +=1;
+		if(index==size){
+			lastAllocChunkLeader = current - size;
+			return (current - size);
+		}
+		
+	}
 	return 0;
+	
 }
 //Wählt den größten freien Speicherblock aus, der groß genug ist
 MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
@@ -74,6 +107,7 @@ MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 		current +=1;
 	} 
 	if(size <= biggestSize){
+		lastAllocChunkLeader = biggestChunkLeader;
 		return biggestChunkLeader;
 	}
 	return 0;
@@ -106,6 +140,7 @@ MemAddr os_Memory_BestFit (Heap *heap, size_t size){
 		}
 		current += 1;
 	}
+	    lastAllocChunkLeader = bestChunkLeader;
 		return bestChunkLeader;
 }
 
