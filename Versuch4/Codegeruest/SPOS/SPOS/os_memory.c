@@ -157,6 +157,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
 		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size); break;
+		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size); break;
 		default: firstChunkAddrUser= 0;
 	}
 	//falls kein Speicherblock gefunden werden konnte
@@ -164,7 +165,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 		os_leaveCriticalSection();
 		return 0;
 	}
-	//Start von erstem alloziertem Bereich
+	//Start von letzten allozierten Bereich
 	heap->lastAllocLeader = firstChunkAddrUser;
 	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
