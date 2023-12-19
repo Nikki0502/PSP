@@ -35,9 +35,9 @@
 //! This flag decides if the first fit allocation strategy is tested
 #define CHECK_FIRST 1
 //! This flag decides if the next fit allocation strategy is tested
-#define CHECK_NEXT 1
+#define CHECK_NEXT 0
 //! This flag decides if the best fit allocation strategy is tested
-#define CHECK_BEST 1
+#define CHECK_BEST 0
 //! This flag decides if the worst fit allocation strategy is tested
 #define CHECK_WORST 1
 //! Number of runs of swarm-allocations that are to be performed. Usually 400

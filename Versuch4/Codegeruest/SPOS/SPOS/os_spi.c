@@ -9,8 +9,9 @@
 #include "os_scheduler.h"
 void os_spi_int(void){
 	// B7 = CLK, B6 = MISO, B5 = MOSI, B4 = \CS, B3 = SIO2(Nicht für den Versuch relevant)
-	DDRB |=  0b10101000;
-	PORTB |= 0b01000000;
+	DDRB |=  0b10110000;
+	DDRB &= 0b10111111;
+	PORTB = 0b01000000;
 	// SPI Register 
 	// SPI Control Register
 	// SPIE=0(keine IR) SPE=1(Activate Spi module) DORD=0(MSB zu erst) MSTR=1(AVR als Master) CPOL=0(Idle Low, Active High) CPHA=0(Leading Edge) SPR1=0(Takt) SPR0=0(Takt)
@@ -37,8 +38,7 @@ uint8_t os_spi_send(uint8_t data){
 	// SPI Data Register (SPDR) setzen
 	SPDR = data; 
 	// warten auf ende der uebertragung singaliesert von SPIF 
-	while((SPSR & 0b10000000) == 0){
-	}
+	while((SPSR & 0b10000000) == 0x00){} 
 	uint8_t byte_from_slave = SPDR;
 	os_leaveCriticalSection();
 	return byte_from_slave;

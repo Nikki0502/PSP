@@ -17,18 +17,20 @@
 #define WRMR 0x01 // Write Mode Register
 #define READ 0x03 // Read data from memory array beginning at selected address
 #define WRITE 0x02 // Write data to memory array beginning at selected address
-#define ByteMode 0x0 // Bitweiser modus
+#define ByteMode 0x00 // Bitweiser modus
 
 // Hilfsfunktionenn
 // Activates the external SRAM as SPI slave. 
 void select_memory (){
 	// by bringing CS low 
-	DDRB &=  0b11110111;
+	//DDRB &=  0b11101111;
+	DDRB |=  0b00010000;
 }
 // Deactivates the external SRAM as SPI slave. 
 void deselect_memory (){
 	// by bringing CS high
-	DDRB |=  0b00001000;
+	//DDRB |=  0b00010000;
+	DDRB &=  0b11101111;
 }
 // Sets the operation mode of the external SRAM.
 void set_operation_mode (uint8_t mode){
@@ -41,7 +43,7 @@ void set_operation_mode (uint8_t mode){
 }
 // Transmitts a 24bit memory address to the external SRAM.
 void transfer_address (MemAddr addr){
-	// sendet die 7 idk bits und noch ein leeres bit, da wir nicht den ganzen speicher nutzen
+	// sendet die 7 idc bits und noch ein leeres bit, da wir nicht den ganzen speicher nutzen
 	os_spi_send(0x0);
 	// sendet eigentliche addr
 	os_spi_send(addr>>8);
@@ -68,7 +70,6 @@ void write_Internal(MemAddr addr , MemValue value){
 void init_External(void){	
 	// SPI-Modul aktiviert werden
 	os_spi_int();
-	// gf. weitere Steuerleitungen konfiguriert werden?????
 	// SRAM nicht als SPI-Slave selektiert ist
 	deselect_memory();
 	// byteweisen Zugriffsmodus
@@ -92,8 +93,8 @@ void write_External(MemAddr addr, MemValue value){
 	os_spi_send(WRITE);
 	transfer_address(addr);
 	os_spi_send(value);
-	os_leaveCriticalSection();
 	deselect_memory();
+	os_leaveCriticalSection();
 }
 
 //Driver intSRAM  
@@ -110,7 +111,7 @@ MemDriver extSRAM__ = {
 	.endAddr = 0xFFFF, // da 64 KiB = 64*1024 Byte und noch -1 wegen start 0
 	.init = init_External,
 	.read = read_External,
-	.write = write_External,
+	.write = write_External
 };
 	
 

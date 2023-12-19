@@ -149,9 +149,7 @@ AllocStrategy os_getAllocationStrategy(const Heap *heap){
   returnt 0 wenn kein Speicherblock gefunden wurde, sonst erste Adresse von gefundenem Block */
 MemAddr os_malloc(Heap* heap, uint16_t size){
 	os_enterCriticalSection();
-	//size anpassen
-	
-	
+
 	/* Je nach Schedulingstrategie wird die erste Adresse des zu 
 	 verwendenen freien Speicherblocks zurückgegeben */
 	MemAddr firstChunkAddrUser;
@@ -169,6 +167,10 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<size;i++){
+		if(os_getMapAddr(heap,(firstChunkAddrUser + i))<os_getUseStart(heap)){
+			os_error("ausserhabl der map");
+			os_leaveCriticalSection();
+		}
 		os_setMapAddrValue(heap,(firstChunkAddrUser + i),0xF);
 	}
 	

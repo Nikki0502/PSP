@@ -32,8 +32,11 @@ typedef struct{
 }Heap;
 
 Heap intHeap__;
+Heap extHeap__;
 #define intHeap (&intHeap__) 
+#define extHeap (&extHeap__)
 
+void os_initHeap(Heap* heap);
 void os_initHeaps(void);
 size_t os_getHeapListLength(void);
 Heap* os_lookupHeap(uint8_t index);

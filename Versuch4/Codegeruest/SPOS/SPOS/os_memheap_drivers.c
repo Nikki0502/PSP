@@ -22,14 +22,14 @@ Heap intHeap__= {
 		.startaddrUse =(MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
 		.currentStrat = OS_MEM_FIRST,
 		.name = "HEAP"
-	};
+};
 
 //Heap struct mit charakteristischen Attributen
 //0xFFF = Speichergröße
 Heap extHeap__ = {
 	.driver = extSRAM,
 	.sizeHeap = (size_t)(0xFFFF),
-	.sizeMap = (size_t)(((0xFFFF)/3)*1),
+	.sizeMap = (size_t)((0xFFFF)/3),
 	.sizeUser = (size_t)(((0xFFFF)/3)*2),
 	.startaddrMap= (MemAddr)(0x0),
 	.startaddrUse= (MemAddr)(((0xFFFF)/3)),
@@ -38,10 +38,16 @@ Heap extHeap__ = {
 };
 
 //Initialisiert die Map(setzt alle Einträge auf 0(unused))
-void os_initHeaps(void){
-	for (size_t i= 0; i<intHeap__.sizeMap ;i++){
-		intHeap__.driver->write(i + intHeap__.startaddrMap,0x00);
+void os_initHeap(Heap* heap){
+	heap->driver->init();
+	for (size_t i= 0; i<heap->sizeMap ;i++){
+		heap->driver->write(i + heap->startaddrMap,0x00);
 	}
+}
+
+void os_initHeaps(void){
+	os_initHeap(intHeap);
+	os_initHeap(extHeap);
 }
 
 size_t os_getHeapListLength(void){
