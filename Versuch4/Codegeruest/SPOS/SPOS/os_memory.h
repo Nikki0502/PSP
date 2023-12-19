@@ -58,5 +58,7 @@ AllocStrategy os_getAllocationStrategy(const Heap *heap);
 MemAddr os_malloc(Heap* heap, uint16_t size);
 void os_free(Heap* heap, MemAddr addr);
 void os_freeProcessMemory (Heap *heap, ProcessID pid);
+void moveChunk (Heap *heap, MemAddr oldChunk, size_t oldSize, MemAddr newChunk, size_t newSize);
+MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size);
 
 #endif /* OS_MEMORY_H_ */

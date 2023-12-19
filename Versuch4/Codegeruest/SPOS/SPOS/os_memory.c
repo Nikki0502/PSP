@@ -152,15 +152,15 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 
 	/* Je nach Schedulingstrategie wird die erste Adresse des zu 
 	 verwendenen freien Speicherblocks zurückgegeben */
-	MemAddr firstChunkAddrUser;
+	MemAddr firstChunkAddrUser=0;
 	switch (os_getAllocationStrategy(heap)){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
 		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size); break;
 		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size); break;
-		default: firstChunkAddrUser= 0;
 	}
 	//falls kein Speicherblock gefunden werden konnte
+	// koennte zu problemem fuehren bei extHEAP
 	if(firstChunkAddrUser==0){
 		os_leaveCriticalSection();
 		return 0;
@@ -218,6 +218,97 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	os_leaveCriticalSection();
 }
 
+/*
+This will move one Chunk to a new location , To provide this the content of the old one is copied to the new location, 
+as well as all Map Entries are set properly since this is a helper function for reallocation, it only works if the new Chunk is bigger than the old one.
+Parameters
+heap	The heap where the Moving takes place
+oldChunk	The first Address of the old Chunk that is to be moved
+oldSize	The size of the old Chunk
+newChunk	The first Address of the new Chunk
+newSize	The size of the new Chunk
+*/
+void moveChunk (Heap *heap, MemAddr oldChunk, size_t oldSize, MemAddr newChunk, size_t newSize){
+	// move Map
+	os_setMapAddrValue(heap,newChunk,(MemValue)os_getCurrentProc());
+	for (uint16_t i =1; i<newSize;i++){
+		if(os_getMapAddr(heap,(newChunk + i))<os_getUseStart(heap)){
+			os_error("ausserhabl der map");
+			os_leaveCriticalSection();
+		}
+		os_setMapAddrValue(heap,(newChunk + i),0xF);
+	}
+	// move User
+	MemValue valueInOld;
+	for (uint16_t i = 1 ; i < oldSize; i++){
+		valueInOld = heap->driver->read(oldChunk+i);
+		heap->driver->write(newChunk+i,valueInOld);
+	}
+}
+/*
+This is an efficient reallocation routine. It is used to resize an existing allocated chunk of memory. 
+If possible, the position of the chunk remains the same. It is only searched for a completely new chunk if everything else does not fit For a more detailed description please use the exercise document.
+
+Parameters
+heap	The heap on which the reallocation is performed
+addr	One adress inside of the chunk that is supposed to be reallocated
+size	The size the new chunk is supposed to have
+
+Returns
+First adress (in use space) of the newly allocated chunk
+*/
+MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size){
+	os_enterCriticalSection();
+	MemAddr oldStartOfChunkUser = os_getFirstByteOfChunk(heap,addr);
+	size_t oldSizeOfChunk = os_getChunkSize(heap,addr);
+	MemAddr firstAddrOfNewChunk=0;
+	MemAddr current;
+	if (size<oldSizeOfChunk){
+		os_leaveCriticalSection();
+		return 0;
+	}
+	//Nach dem Chunk
+	current = oldStartOfChunkUser + oldSizeOfChunk;
+	size_t roomUnderTheChunk=0;
+	while(os_getMapEntry(heap,current) == 0x00 && current < ( os_getUseStart(heap)+os_getUseSize(heap))){
+		current +=1;
+		roomUnderTheChunk +=1;
+	}
+	if(roomUnderTheChunk+oldSizeOfChunk>=size){
+		for(uint16_t i = 1; i <= size-oldSizeOfChunk; i++){
+			os_setMapAddrValue(heap,(oldStartOfChunkUser + oldSizeOfChunk)+i,0xF);
+		}
+		os_leaveCriticalSection();
+		return oldStartOfChunkUser;
+	}
+	//Vor dem Chunk
+	current = oldStartOfChunkUser;
+	size_t roomOboveTheChunk=0;
+	while(os_getMapEntry(heap,current) == 0x00 && current > os_getMapStart(heap)){
+		current -=1;
+		roomOboveTheChunk +=1;
+	}
+	if(roomOboveTheChunk+roomUnderTheChunk+oldSizeOfChunk>=size){
+		firstAddrOfNewChunk = oldStartOfChunkUser - roomOboveTheChunk;
+		moveChunk(heap,oldStartOfChunkUser,oldSizeOfChunk,firstAddrOfNewChunk,size);
+	}
+	//Move Chunk
+	switch (os_getAllocationStrategy(heap)){
+		case OS_MEM_FIRST: firstAddrOfNewChunk = os_Memory_FirstFit(heap,size); break;
+		case OS_MEM_WORST: firstAddrOfNewChunk = os_Memory_WorstFit(heap,size); break;
+		case OS_MEM_BEST: firstAddrOfNewChunk = os_Memory_BestFit(heap,size); break;
+		case OS_MEM_NEXT: firstAddrOfNewChunk = os_Memory_NextFit(heap,size); break;
+	}
+	//falls kein Speicherblock gefunden werden konnte
+	// koennte zu problemem fuehren bei extHEAP
+	if(firstAddrOfNewChunk==0){
+		os_leaveCriticalSection();
+		return 0;
+	}
+	moveChunk(heap,oldStartOfChunkUser,oldSizeOfChunk,firstAddrOfNewChunk,size);
+	os_leaveCriticalSection();
+	return firstAddrOfNewChunk;
+}
 
 
 
