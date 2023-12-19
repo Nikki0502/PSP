@@ -164,6 +164,8 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 		os_leaveCriticalSection();
 		return 0;
 	}
+	//Start von erstem alloziertem Bereich
+	heap->lastAllocLeader = firstChunkAddrUser;
 	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<size;i++){

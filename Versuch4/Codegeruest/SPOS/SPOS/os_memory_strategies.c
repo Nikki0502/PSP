@@ -9,8 +9,6 @@
 #include "os_memory.h"
 #include <stdbool.h>
 
-MemAddr lastAllocChunkLeader; //Globale Variable für Next Fit
-
 //Gibt die erste Speicheradresse von einem freien Block zurück
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x00 && userAddr>=os_getUseStart(heap)){
@@ -47,7 +45,6 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 		}
 		current +=1;
 		if(index==size){
-			lastAllocChunkLeader = current - size;
 			return (current - size);
 		}
 		
@@ -56,8 +53,36 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 }
 
 MemAddr os_Memory_NextFit (Heap *heap, size_t size){
+	MemAddr current = heap->lastAllocLeader;
+	current += os_getChunkSize(heap,current);
+	uint16_t index = 0;
+	while(current<(os_getUseStart(heap)+os_getUseSize(heap))){
+		if(os_getMapEntry(heap,current)==0){
+			index +=1;
+		}
+		else{
+			index = 0;
+		}
+		current +=1;
+		if(index==size){
+			return (current - size);
+		}
+	}
+	index = 0;
+	current = os_getUseStart(heap);
+	while(current<heap.lastAllocLeader){
+		if(os_getMapEntry(heap,current)==0){
+			index +=1;
+		}
+		else{
+			index = 0;
+		}
+		current +=1;
+		if(index==size){
+			return (current - size);
+		}
+	}
 	return 0;
-	
 }
 //Wählt den größten freien Speicherblock aus, der groß genug ist
 MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
@@ -75,7 +100,6 @@ MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 		current +=1;
 	} 
 	if(size <= biggestSize){
-		lastAllocChunkLeader = biggestChunkLeader;
 		return biggestChunkLeader;
 	}
 	return 0;
@@ -107,7 +131,6 @@ MemAddr os_Memory_BestFit (Heap *heap, size_t size){
 		}
 		current += 1;
 	}
-	    lastAllocChunkLeader = bestChunkLeader;
 		return bestChunkLeader;
 }
 
