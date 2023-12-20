@@ -53,7 +53,7 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 }
 //Nehme den ersten freien Speicherblock der groß genug ist beginnend am letzten allozierten Chunk
 MemAddr os_Memory_NextFit (Heap *heap, size_t size){
-	
+	/*
 	MemAddr current = heap->lastAllocLeader;
 	current += os_getChunkSize(heap,current);
 	uint16_t index = 0;
@@ -84,6 +84,29 @@ MemAddr os_Memory_NextFit (Heap *heap, size_t size){
 		}
 	}
 	return 0;
+	*/
+	MemAddr current = heap->lastAllocLeader;
+	uint16_t index = 0;
+	while(current!=(heap->lastAllocLeader)-1){
+		//hat das ende erreicht
+		if(current=os_getUseStart(heap)+os_getUseSize(heap){
+			current = os_getUseStart(heap);
+			index = 0;
+		}
+		//sonst
+		if(os_getMapEntry(heap,current)==0){
+			index +=1;
+		}
+		else{
+			index = 0;
+		}
+		current +=1;
+		if(index==size){
+			return (current - size);
+		}
+	}
+	return 0;
+	
 }
 //Wählt den größten freien Speicherblock aus, der groß genug ist
 MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
