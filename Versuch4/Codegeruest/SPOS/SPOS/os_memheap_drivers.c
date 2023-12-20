@@ -21,8 +21,8 @@ Heap intHeap__= {
 		.startaddrMap = (MemAddr)(0x100 + HEAPOFFSET),
 		.startaddrUse =(MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
 		.currentStrat = OS_MEM_FIRST,
-		.name = "HEAP",
-		.lastAllocLeader = 0
+		.name = "intHeap",
+		.lastAllocLeader = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3))
 };
 
 //Heap struct mit charakteristischen Attributen
@@ -36,7 +36,7 @@ Heap extHeap__ = {
 	.startaddrUse= (MemAddr)(((0xFFFF)/3)),
 	.currentStrat = OS_MEM_FIRST,
 	.name = "extHeap",
-	.lastAllocLeader = 0
+	.lastAllocLeader = (MemAddr)(((0xFFFF)/3))
 };
 
 //Initialisiert die Map(setzt alle Einträge auf 0(unused))

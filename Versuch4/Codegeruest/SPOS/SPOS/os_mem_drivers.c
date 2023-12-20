@@ -23,14 +23,12 @@
 // Activates the external SRAM as SPI slave. 
 void select_memory (){
 	// by bringing CS low 
-	//DDRB &=  0b11101111;
-	DDRB |=  0b00010000;
+	PORTB &=  0b11101111;
 }
 // Deactivates the external SRAM as SPI slave. 
 void deselect_memory (){
 	// by bringing CS high
-	//DDRB |=  0b00010000;
-	DDRB &=  0b11101111;
+	PORTB |=  0b00010000;
 }
 // Sets the operation mode of the external SRAM.
 void set_operation_mode (uint8_t mode){

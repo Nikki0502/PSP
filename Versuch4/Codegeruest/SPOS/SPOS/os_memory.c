@@ -156,24 +156,24 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	switch (os_getAllocationStrategy(heap)){
 		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
-		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size); break;
-		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size); break;
+		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size);   break;
+		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size); 
+		                  if(firstChunkAddrUser == 0){
+							  heap->lastAllocLeader = heap->startaddrUse; }
+						  else {
+							  heap->lastAllocLeader = firstChunkAddrUser;}             
+	                                                                           break;
 	}
 	//falls kein Speicherblock gefunden werden konnte
 	// koennte zu problemem fuehren bei extHEAP
 	if(firstChunkAddrUser==0){
+		//Start von letzten allozierten Bereich
 		os_leaveCriticalSection();
 		return 0;
 	}
-	//Start von letzten allozierten Bereich
-	heap->lastAllocLeader = firstChunkAddrUser;
 	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<size;i++){
-		if(os_getMapAddr(heap,(firstChunkAddrUser + i))<os_getUseStart(heap)){
-			os_error("ausserhabl der map");
-			os_leaveCriticalSection();
-		}
 		os_setMapAddrValue(heap,(firstChunkAddrUser + i),0xF);
 	}
 	
