@@ -11,6 +11,10 @@
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
+#include <avr/pgmspace.h>
+
+const PROGMEM char intName[] = "intHeap";
+const PROGMEM char extName[] = "extHeap";
 
 //Heap struct mit charakteristischen Attributen
 Heap intHeap__= {
@@ -21,7 +25,7 @@ Heap intHeap__= {
 		.startaddrMap = (MemAddr)(0x100 + HEAPOFFSET),
 		.startaddrUse =(MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
 		.currentStrat = OS_MEM_FIRST,
-		.name = "intHeap",
+		.name = intName,
 		.lastAllocLeader = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3))
 };
 
@@ -35,7 +39,7 @@ Heap extHeap__ = {
 	.startaddrMap= (MemAddr)(0x0),
 	.startaddrUse= (MemAddr)(((0xFFFF)/3)),
 	.currentStrat = OS_MEM_FIRST,
-	.name = "extHeap",
+	.name = extName,
 	.lastAllocLeader = (MemAddr)(((0xFFFF)/3))
 };
 

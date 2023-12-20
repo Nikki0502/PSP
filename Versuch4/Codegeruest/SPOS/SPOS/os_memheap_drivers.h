@@ -28,7 +28,7 @@ typedef struct{
 	size_t sizeUser;
 	size_t sizeHeap;
 	AllocStrategy currentStrat;
-	char *name;
+	const char *name;
 	MemAddr lastAllocLeader;
 }Heap;
 

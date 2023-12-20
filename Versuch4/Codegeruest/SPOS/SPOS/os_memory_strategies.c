@@ -37,7 +37,8 @@ MemAddr os_Memory_FirstFit (Heap *heap, size_t size){
 	MemAddr current = os_getUseStart(heap);
 	uint16_t index = 0;
 	while(current<(os_getUseStart(heap)+os_getUseSize(heap))){
-		if(os_getMapEntry(heap,current)==0){
+		volatile uint8_t val = os_getMapEntry(heap,current);
+		if(val==0){
 			index +=1;
 		}
 		else{
@@ -86,10 +87,14 @@ MemAddr os_Memory_NextFit (Heap *heap, size_t size){
 	return 0;
 	*/
 	MemAddr current = heap->lastAllocLeader;
+	current += os_getChunkSize(heap,current);
 	uint16_t index = 0;
+	if(current==os_getUseStart(heap)){
+		return os_Memory_FirstFit(heap,size);
+	}
 	while(current!=(heap->lastAllocLeader)-1){
 		//hat das ende erreicht
-		if(current=os_getUseStart(heap)+os_getUseSize(heap){
+		if(current==os_getUseStart(heap)+os_getUseSize(heap)){
 			current = os_getUseStart(heap);
 			index = 0;
 		}

@@ -232,15 +232,11 @@ void moveChunk (Heap *heap, MemAddr oldChunk, size_t oldSize, MemAddr newChunk, 
 	// move Map
 	os_setMapAddrValue(heap,newChunk,(MemValue)os_getCurrentProc());
 	for (uint16_t i =1; i<newSize;i++){
-		if(os_getMapAddr(heap,(newChunk + i))<os_getUseStart(heap)){
-			os_error("ausserhabl der map");
-			os_leaveCriticalSection();
-		}
 		os_setMapAddrValue(heap,(newChunk + i),0xF);
 	}
 	// move User
 	MemValue valueInOld;
-	for (uint16_t i = 1 ; i < oldSize; i++){
+	for (uint16_t i = 0 ; i <= oldSize; i++){
 		valueInOld = heap->driver->read(oldChunk+i);
 		heap->driver->write(newChunk+i,valueInOld);
 	}
@@ -263,6 +259,11 @@ MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size){
 	size_t oldSizeOfChunk = os_getChunkSize(heap,addr);
 	MemAddr firstAddrOfNewChunk=0;
 	MemAddr current;
+	if(os_getMapEntry(heap,oldStartOfChunkUser)!=os_getCurrentProc()){
+		os_error("Nicht der richtige Owner");
+		os_leaveCriticalSection();
+		return 0;
+	}
 	if (size<oldSizeOfChunk){
 		os_leaveCriticalSection();
 		return 0;

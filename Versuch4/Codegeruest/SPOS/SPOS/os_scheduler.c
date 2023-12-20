@@ -378,7 +378,9 @@ bool os_kill(ProcessID pid){
 	}
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;
+	
 	os_freeProcessMemory(intHeap,pid);
+	os_freeProcessMemory(extHeap,pid);
 	
 	
 	// Selbst Terminierung
