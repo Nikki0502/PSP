@@ -1,7 +1,8 @@
 //-------------------------------------------------
-//          TestTask: Heap Cleanup
+//          TestTask: Realloc
 //-------------------------------------------------
 
+#include "defines.h"
 #include "lcd.h"
 #include "os_core.h"
 #include "os_input.h"
@@ -11,6 +12,7 @@
 
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
+#include <stdlib.h>
 #include <util/atomic.h>
 
 #if VERSUCH < 4
@@ -18,36 +20,9 @@
 #endif
 
 //---- Adjust here what to test -------------------
-//! This flag defines if phase 1 of this test is executed
-#define PHASE_1 1
-//! This flag defines if phase 2 of this test is executed
-#define PHASE_2 1
-//! This flag defines if phase 3 of this test is executed
-#define PHASE_3 1
-//! This flag defines if phase 4 of this test is executed
-#define PHASE_4 1
-//! Number of heap-drivers that are to be tested
-#define DRIVERS os_getHeapListLength()
-//! Test if all heaps are used. Should be 1 for V3 and 2 in V4
-#define HEAP_COUNT 2
-//! The default memory allocation strategy for phase 3
-#define DEFAULT_ALLOC_STRATEGY OS_MEM_NEXT
-//! This flag decides if the first fit allocation strategy is tested
-#define CHECK_FIRST 1
-//! This flag decides if the next fit allocation strategy is tested
-#define CHECK_NEXT 1
-//! This flag decides if the best fit allocation strategy is tested
-#define CHECK_BEST 1
-//! This flag decides if the worst fit allocation strategy is tested
-#define CHECK_WORST 1
-//! Number of runs of swarm-allocations that are to be performed. Usually 400
-#define RUNS 400
-//! A reasonable implementation does not take longer than this, but adjust if not sufficient
-#define SOFT_TIMEOUT (10 * 60) // seconds
+#define TEST_INTERNAL 1
+#define TEST_EXTERNAL 1
 //-------------------------------------------------
-
-//! The test is not allowed to take longer
-#define HARD_TIMEOUT (10 * 60) // seconds
 
 #ifndef WRITE
 #define WRITE(str) lcd_writeProgString(PSTR(str))
@@ -71,382 +46,611 @@
 #define CONFIRM_REQUIRED 1
 #endif
 
+// Error printout
+#define TEST_FAILED_HEAP_AND_HALT(reason, heap)   \
+    do ATOMIC {                                   \
+            if ((heap) == intHeap) {              \
+                TEST_FAILED("intHeap:  " reason); \
+            } else {                              \
+                TEST_FAILED("extHeap:  " reason); \
+            }                                     \
+            HALT;                                 \
+        }                                         \
+    while (0)
 
-#define TEST_FAILED_AND_HALT(reason) \
-    do {                             \
-        ATOMIC {                     \
-            TEST_FAILED(reason);     \
-            HALT;                    \
-        }                            \
+// Calculates the minimum of a and b
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+// Check if this heap gets tested
+#define IS_TESTING(heap) (((heap) == intHeap && TEST_INTERNAL) || ((heap) == extHeap && TEST_EXTERNAL))
+
+// Flag indicating if the internal realloc error checks are complete
+volatile bool errorI = false;
+// Flag indicating if the external realloc error checks are complete
+volatile bool errorE = false;
+// Flag indicating if the external realloc check discovered failures
+bool failI = false;
+// Flag indicating if the internal realloc check discovered failures
+bool failE = false;
+
+// Memory chunks for foreign reallocation checks (one process allocates, the other tries to reallocate)
+volatile MemAddr addrI = 0;
+volatile MemAddr addrE = 0;
+
+#define FOREIGN_ALLOC_SIZE 42
+
+// Flag indicating an error
+static bool errflag = false;
+
+static int stderrWrapper(const char c, FILE *stream) {
+    errflag = true;
+    putchar(c);
+    return 0;
+}
+static FILE *wrappedStderr = &(FILE)FDEV_SETUP_STREAM(stderrWrapper, NULL, _FDEV_SETUP_WRITE);
+
+#define EXPECT_ERROR(label)                            \
+    do {                                               \
+        lcd_clear();                                   \
+        lcd_writeProgString(PSTR("Please confirm  ")); \
+        lcd_writeProgString(PSTR(label ":"));          \
+        delayMs(DEFAULT_OUTPUT_DELAY * 16);            \
+        errflag = false;                               \
     } while (0)
 
-#define TEST_FAILED_HEAP_AND_HALT(reason, heap) \
-    do {                                        \
-        ATOMIC {                                \
-            TEST_FAILED(reason " ");            \
-            lcd_writeProgString((heap)->name);  \
-            HALT;                               \
-        }                                       \
+#define EXPECT_NO_ERROR  \
+    do {                 \
+        errflag = false; \
     } while (0)
 
-//! ProcessID of small allocation process
-volatile ProcessID allocProc = 0;
-//! This variable is set to 1 when the small allocation process is finished
-volatile uint8_t allocProcReadyToDie = 0;
-//! This variable is set to true when the test program finishes
-bool terminated = false;
+#define ASSERT_ERROR(heap, label)                                    \
+    do {                                                             \
+        if (!errflag) {                                              \
+            TEST_FAILED_HEAP_AND_HALT("No error (" label ")", heap); \
+        }                                                            \
+    } while (0)
+
+#define ASSERT_NO_ERROR(heap)                                    \
+    do {                                                         \
+        if (errflag) {                                           \
+            TEST_FAILED_HEAP_AND_HALT("Unexpected error", heap); \
+        }                                                        \
+    } while (0)
+
+
+typedef struct {
+    MemAddr head; // First address of that chunk
+    size_t size;  // Size of chunk
+    bool dummy;   // 1 if this chunk is a dummy
+} Chunk;
 
 /*!
- * Swarm allocation program. This program tries to allocate all bytes in
- * every heap. This is done by allocating less and less memory in each step.
- * Due to this other processes will be able to allocate memory, too. This
- * yields a very fragmented memory.
+ * Returns the mapEntry of the use-address ptr
+ * \param  *heap Heap on which the map is to be checked
+ * \param   ptr  Use-address whose map-entry is requested
+ * \return       Entry for that position (between 0x0 and 0xF)
  */
-void swarm_alloc_program(void) {
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        Heap *heap = os_lookupHeap(i);
-        // The number 4 is a heuristic. We expect the ram not to be that
-        // fragmented.
-        uint16_t max = 1024 / (MAX_NUMBER_OF_PROCESSES - 3) / 4;
-        while (max) {
-            // Allocate less and less memory with every step
-            const uint16_t sz = (max + 1) / 2;
-            max -= sz;
-            os_malloc(heap, sz);
+uint8_t progs_getMapEntry(Heap *heap, MemAddr ptr) {
+    MemAddr relativeAddress = ptr - os_getUseStart(heap);
+    // If nibble is 1, the high nibble is responsible
+    uint8_t nibble = relativeAddress % 2 == 0 ? 1 : 0;
+
+    MemAddr mapEntryAddress = relativeAddress / 2;
+
+    MemValue fullEntry = heap->driver->read(os_getMapStart(heap) + mapEntryAddress);
+
+    if (nibble == 1) {
+        return fullEntry >> 4;
+    } else {
+        return fullEntry & 0x0F;
+    }
+}
+
+/*!
+ * Returns the chunk-size of a chunk that starts at ptr. Only works for chunks
+ * that were allocated as private memory by one of the processes.
+ * \param  *heap Heap where the chunk is
+ * \param   ptr  Address of the very first byte of that chunk
+ * \return       Length of chunk in bytes
+ */
+uint16_t progs_getChunkSize(Heap *heap, MemAddr ptr) {
+    uint16_t size;
+    MemValue owner;
+    owner = progs_getMapEntry(heap, ptr);
+    if (owner == 0 || owner >= MAX_NUMBER_OF_PROCESSES) {
+        return 0;
+    }
+    for (size = 1; progs_getMapEntry(heap, ptr + size) == 0xF; size++) continue;
+    return size;
+}
+
+/*!
+ * Writes a pattern to a certain chunk
+ * \param  *heap   Heap on which this action is to be performed
+ * \param  *c      Chunk to which the pattern is to be written
+ * \param   pat    Pattern that is written. This byte gets repeatedly written
+ *                 to the chunk until the whole chunk is filled with it.
+ */
+void writePat(Heap *heap, Chunk *c, MemValue pat) {
+    for (size_t i = 0; i < c->size; i++) {
+        heap->driver->write(c->head + i, pat);
+    }
+}
+
+/*!
+ * Checks if a certain chunk contains a given pattern.
+ * \param  *heap   On which heap the check is performed.
+ * \param   c      Chunk that should contain the pattern
+ * \param   pat    Pattern that should be found in that chunk
+ * \return         1 if the pattern exists at that position, 0 otherwise
+ */
+bool checkChunkPat(Heap *heap, Chunk *c, MemValue pat) {
+    for (size_t i = 0; i < c->size; i++) {
+        if (heap->driver->read(c->head + i) != pat) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*!
+ * Checks if a certain area in the memory contains a given pattern.
+ * \param  *heap   On which heap the check is performed.
+ * \param   start  First address where the pattern starts
+ * \param   length Length of the memory area that is to be checked
+ * \param   pat    Pattern that should be found in that area
+ * \return         1 if the pattern exists at that position, 0 otherwise
+ */
+bool checkMemPat(Heap *heap, MemAddr start, MemAddr length, MemValue pat) {
+    for (size_t i = 0; i < length; i++) {
+        if (heap->driver->read(start + i) != pat) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*!
+ * Allocates all chunks in the given chunk array, writes a pattern to each
+ * chunk and deallocates all dummies.
+ * \param  *heap   Heap on which this action is to be performed
+ * \param  *chunks Array of chunks that are ot be allocated/freed
+ * \param   count  Size of chunks-array
+ */
+void massAlloc(Heap *heap, Chunk *chunks, size_t count) {
+    // Allocation phase
+    for (size_t i = 0; i < count; i++) {
+        chunks[i].head = os_malloc(heap, chunks[i].size);
+        if (!chunks[i].head) {
+            TEST_FAILED_HEAP_AND_HALT("malloc", heap);
+        }
+        writePat(heap, chunks + i, i);
+    }
+
+    // Free phase
+    for (size_t i = 0; i < count; i++) {
+        if (chunks[i].dummy) {
+            os_free(heap, chunks[i].head);
         }
     }
 }
 
 /*!
- * Small allocation program that tries to allocate 2 times 4 bytes on every
- * heap. After that it signals that it is finished and it waits in an infinite
- * loop until it is externally killed.
+ * Frees all non dummy chunks of the given chunk array.
+ * \param  *heap   Heap on which this action is to be performed
+ * \param  *chunks Array of chunks that are ot be allocated/freed
+ * \param   count  Size of chunks-array
  */
-void small_alloc_program(void) {
-    allocProc = os_getCurrentProc();
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        os_malloc(os_lookupHeap(i), 4);
-        os_malloc(os_lookupHeap(i), 4);
-    }
-    allocProcReadyToDie = 1;
-    HALT;
-}
-
-/*!
- * Starts the small allocation process and waits until it finished its
- * allocations.
- */
-void hc_startSmallAllocator(void) {
-    allocProcReadyToDie = 0;
-    os_exec(small_alloc_program, DEFAULT_PRIORITY);
-    while (!allocProcReadyToDie) {
-        // wait until the allocation process allocated its memory
-    }
-}
-
-/*!
- * Kills the small allocation process.
- */
-void hc_killSmallAllocator(void) {
-    os_kill(allocProc);
-}
-
-/*!
- * Checks if a free process slot exists
- */
-static bool hc_hasFreeProcSlot(void) {
-    for (ProcessID pid = 0; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
-        if (os_getProcessSlot(pid)->state == OS_PS_UNUSED) return true;
-    }
-    return false;
-}
-
-/*!
- * Starts as many processes of the swarm-allocation program as possible.
- */
-void hc_startAllocatorSwarm(void) {
-    while (hc_hasFreeProcSlot()) {
-        os_exec(swarm_alloc_program, DEFAULT_PRIORITY);
-    }
-}
-
-/*!
- * Waits until all started swarm-processes are dead.
- */
-void hc_waitForSwarmKill(void) {
-    uint8_t num;
-    do {
-        num = 0;
-        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
-            if (os_getProcessSlot(pid)->state != OS_PS_UNUSED) num++;
+void massFree(Heap *heap, Chunk *chunks, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (!chunks[i].dummy) {
+            os_free(heap, chunks[i].head);
         }
-    } while (num > 1); // 1 main test-process
+    }
 }
 
 /*!
- * Waits until a process-slot is free.
+ * Allocates memory on a heap
+ * \param heap  Heap on which this action is to be performed
+ * \param addr  The address of the allocated memory
  */
-void hc_waitForFreeProcSlot(void) {
-    while (!hc_hasFreeProcSlot()) continue;
+void foreignAlloc(Heap *heap, volatile MemAddr *addr) {
+    // Allocate memory
+    *addr = os_malloc(heap, FOREIGN_ALLOC_SIZE);
+    if (!*addr) {
+        TEST_FAILED_HEAP_AND_HALT("malloc", heap);
+    }
 }
 
-//! Main test routine. Executes the single phases.
-REGISTER_AUTOSTART(main_program)
-void main_program(void) {
-    // Init Timeout Timer 1
-    // CTC mode
-    TCCR1A &= ~(1 << WGM10);
-    TCCR1A &= ~(1 << WGM11);
-    TCCR1B |= (1 << WGM12);
-    TCCR1B &= ~(1 << WGM13);
+/*!
+ * Main test routine
+ * In this routine, several chunks are allocated and a pattern is written to
+ * them. Then those chunks labeled as dummies are freed again. After that
+ * the middle chunk (i.e. with 7 chunks the 3rd chunk) is reallocated to a
+ * new size. That size is the sum of the sizes of all chunks labeled as
+ * realloc candidates in the reallocBits bitmap.
+ * After that reallocation it is checked if the map is correctly representing
+ * that reallocation and if the other chunks were not damaged in the process.
+ *
+ * \param  *heap        Heap to test.
+ * \param   dummies     Dummies are those chunks that get freed after all
+ *                      chunks were allocated. This bitmap defines, which
+ *                      chunk is a dummy. The LSB defines whether the last
+ *                      allocated chunk is freed and the MSB defines whether
+ *                      the first allocated chunk is freed, etc.
+ * \param   reallocBits This bitmap is set up like dummies. Except in this map
+ *                      it is defined whose chunks are going to be merged by
+ *                      the reallocation.
+ * \param   random      If this byte is 0xFF, the new size of the reallocation-
+ *                      chunk is calculated deterministically. If it is not
+ *                      0xFF, the reallocation-chunk is additionally randomly
+ *                      increased for their reallocation. That random value is
+ *                      at least 1 and smaller than the size of the chunk with
+ *                      index "random".
+ * \param   destination This bitmap defines in which chunk the resulting
+ *                      reallocated chunk must be located.
+ */
+bool makeTest(Heap *heap, uint8_t dummies, uint8_t reallocBits, uint8_t random, uint8_t destination) {
 
-    // set prescaler to 1024
-    TCCR1B |= (1 << CS12) | (1 << CS10);
-    TCCR1B &= ~(1 << CS11);
 
-    // set compare register -> match every 1s
-    OCR1A = 19531;
+    os_setAllocationStrategy(heap, OS_MEM_FIRST);
 
-    // enable timer
-    TIMSK1 |= (1 << OCIE1A);
+    size_t useSize = os_getUseSize(heap) - FOREIGN_ALLOC_SIZE;
+    if (useSize > 4096) useSize = 4096;
 
-    // Check if heaps are defined correctly
-    if (DRIVERS < HEAP_COUNT) {
-        TEST_FAILED_AND_HALT("Missing heap");
+        // This macro returns 1 for all chunks that are labeled as dummy chunks
+#define IS_DUMMY(i) ((dummies >> (6 - i)) & 1)
+        // This macro returns 1 for all chunks that are labeled as reallocation candidates
+#define IS_REALLOC_CANDIDATE(i) ((reallocBits >> (6 - i)) & 1)
+        // This macro returns 1 for all chunks that are still untouched after their initial allocation
+#define IS_PERSISTENT(i) (!(IS_DUMMY(i) || IS_REALLOC_CANDIDATE(i)))
+
+
+    // 1. Preparation of chunks
+
+    /*
+     * In this chunk array, 7 chunks will be prepared. Chunks 0,2,3,4 have semi-
+     * random sizes, the other sizes are fixed. Chunk 6 has a size as big as the
+     * whole use-size. This is only temporary, as its size will be corrected
+     * below
+     */
+    Chunk chunks[] = {
+        {.size = rand() % (useSize / 6) + useSize / 6 /* useSize/6 <= size < 2*useSize/6 */, .dummy = IS_DUMMY(0)},
+        {                                                                         .size = 1, .dummy = IS_DUMMY(1)},
+        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(2)},
+        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(3)},
+        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(4)},
+        {                                                                         .size = 1, .dummy = IS_DUMMY(5)},
+        {                                                                   .size = useSize, .dummy = IS_DUMMY(6)}
+    };
+
+    // Now resize last chunk so that the sum of the chunk sizes equals the total use size.
+    const size_t cSize = sizeof(chunks) / sizeof(*chunks); // Size of chunks[]
+    const size_t reallocIndex = cSize / 2;                 // Index of block we want to reallocate
+
+    for (size_t i = 0; i < cSize - 1; i++) {
+        chunks[cSize - 1].size -= chunks[i].size;
     }
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        for (uint8_t j = i + 1; j < DRIVERS; j++) {
-            if (os_lookupHeap(i) == os_lookupHeap(j)) {
-                TEST_FAILED_AND_HALT("Missing heap");
+
+
+    // 2. Allocation of chunks
+
+    // Allocate all prepared chunks. Then a pattern is written to the chunks and
+    // those chunks flagged as dummies are freed
+    massAlloc(heap, chunks, cSize);
+
+
+    // 3. Reallocation of middle chunk
+
+    size_t newSize = 0;
+    // The new size is calculated as the sizes of all those chunks that are
+    // labeled as realloc candidates
+    for (size_t i = 0; i < cSize; i++) {
+        // Add chunk size to new size if reallocate bit is 1
+        if (IS_REALLOC_CANDIDATE(i)) {
+            newSize += chunks[i].size;
+        }
+    }
+    // Add some random size to new size
+    if (random != 0xFF) {
+        size_t add = rand() % (chunks[random].size);
+        if (add < 1) {
+            add = 1;
+        }
+        // 1 <= add < chunks[random].size
+        newSize += add;
+    }
+
+    // Reallocate the chunk with index reallocIndex to newSize
+    const Chunk old = chunks[reallocIndex];
+    chunks[reallocIndex].size = newSize;
+    chunks[reallocIndex].head = os_realloc(heap, chunks[reallocIndex].head, newSize);
+
+
+    // 4. Check if os_realloc returns a valid address
+
+    // Check if os_realloc found a valid position for the new chunk
+    if (chunks[reallocIndex].head == 0) {
+        TEST_FAILED_HEAP_AND_HALT("allocation", heap);
+    }
+
+
+    // 5. Check if memcpy was successful
+
+    // Confirm the written pattern is present in the reallocated block (memcpy)
+    if (!checkMemPat(heap, chunks[reallocIndex].head, MIN(old.size, newSize), reallocIndex)) {
+        TEST_FAILED_HEAP_AND_HALT("memcopy", heap);
+    }
+
+
+    // 6. Check if the map was adapted correctly
+
+    // Compute the actual size of the reallocated chunk by iterating the map
+    if (progs_getChunkSize(heap, chunks[reallocIndex].head) != newSize) {
+        TEST_FAILED_HEAP_AND_HALT("map adaptation", heap);
+    }
+
+    // Compute the size of the untouched chunks
+    for (size_t i = 0; i < cSize; i++) {
+        if (IS_PERSISTENT(i)) {
+            if (progs_getChunkSize(heap, chunks[i].head) != chunks[i].size) {
+                TEST_FAILED_HEAP_AND_HALT("map damage", heap);
             }
         }
     }
 
-// 1. Phase: Test if you can over-allocate memory
-#if PHASE_1
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 1:"));
-    lcd_line2();
-    lcd_writeProgString(PSTR("Overalloc     "));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
-    // First allocate a small amount of memory on each heap. This should make
-    // it impossible to allocate the whole use size in the next step
-    hc_startSmallAllocator();
-    // Then we try to alloc all the memory on one heap. If it works, the
-    // student's solution is faulty.
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        Heap *heap = os_lookupHeap(i);
-        uint16_t total = os_getUseSize(heap);
-        if (os_malloc(heap, total)) {
-            TEST_FAILED_HEAP_AND_HALT("Overalloc fail", heap);
+    // 7. Check if the new chunk overlaps with other chunks
+
+    // Rewrite the pattern in the reallocated chunk.
+    writePat(heap, chunks + reallocIndex, reallocIndex);
+
+    // Check all patterns of non dummy chunks.
+    // Therefore checking if reallocation interfered with any other chunk.
+    for (size_t i = 0; i < cSize; i++) {
+        if (!chunks[i].dummy && !checkChunkPat(heap, chunks + i, i)) {
+            TEST_FAILED_HEAP_AND_HALT("pattern broken", heap);
         }
     }
-    hc_killSmallAllocator();
 
+
+    // 8. Check if the chunk is at the correct position
+
+    bool found = false;
+    for (size_t i = 0; !found && i < cSize; i++) {
+        if ((1 << (6 - i)) & destination) {
+            if (i == reallocIndex) {
+                found = (chunks[reallocIndex].head == old.head);
+            } else {
+                found = (chunks[reallocIndex].head == chunks[i].head);
+            }
+        }
+    }
+
+
+    // 9. Clean up
+
+    // Free remaining chunks
+    massFree(heap, chunks, cSize);
+
+    return found;
+
+
+#undef IS_PERSISTENT
+#undef IS_REALLOC_CANDIDATE
+#undef IS_DUMMY
+}
+
+/*!
+ * Print test message.
+ * \param   i    Index of test
+ * \param  *msg  Name of test
+ * \param  *heap Heap on which the test is performed
+ */
+void test(char i, const char *msg, Heap *heap) {
+
+    static char PROGMEM const spaces16[] = "                ";
+    os_enterCriticalSection();
+    if (heap == intHeap) {
+        lcd_line1();
+        lcd_writeProgString(spaces16);
+        lcd_line1();
+        lcd_writeChar(i);
+        lcd_writeProgString(PSTR("i:"));
+    } else {
+        lcd_line2();
+        lcd_writeProgString(spaces16);
+        lcd_line2();
+        lcd_writeChar(i);
+        lcd_writeProgString(PSTR("e:"));
+    }
+    lcd_writeProgString(msg);
+    os_leaveCriticalSection();
+    delayMs(5 * DEFAULT_OUTPUT_DELAY);
+}
+
+/*!
+ * If a reallocation test was successful, this prints "OK" in the correct line
+ * \param  *heap Heap on which the test was successful
+ */
+void ok(Heap *heap) {
+    os_enterCriticalSection();
+    if (heap == intHeap) {
+        lcd_goto(1, 15);
+    }
+    if (heap == extHeap) {
+        lcd_goto(2, 15);
+    }
     lcd_writeProgString(PSTR("OK"));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-#endif
+    os_leaveCriticalSection();
+    delayMs(5 * DEFAULT_OUTPUT_DELAY);
+}
 
-// 2. Phase: Settings test: Check if heap is set up correctly
-#if PHASE_2
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 2:"));
-    lcd_line2();
-    lcd_writeProgString(PSTR("Heap settings "));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-
-    // This address is certainly in the stacks.
-    MemValue *startOfStacks = (uint8_t *)((AVR_MEMORY_SRAM / 2) + AVR_SRAM_START);
-
-    /*
-     * If we allocate all the memory and write in it, we should not be able to
-     * write into that stack memory. If we can, the internal heap is initialized
-     * with wrong settings
-     */
-    os_setAllocationStrategy(intHeap, OS_MEM_FIRST);
-    MemAddr hugeChunk = os_malloc(intHeap, os_getUseSize(intHeap));
-    if (!hugeChunk) {
-        TEST_FAILED_HEAP_AND_HALT("f:Huge alloc fail", intHeap);
-    }
-
-    /*
-     * We will now write a pattern into RAM and check if they change the
-     * contents of the stack. To check that, we check the top of the stack of
-     * process 8. This can be done because there is no process 8
-     */
-    *startOfStacks = 0x00;
-    for (MemAddr currentAddress = hugeChunk; currentAddress < hugeChunk + os_getUseSize(intHeap); currentAddress++) {
-        intHeap->driver->write(currentAddress, 0xFF);
-    }
-
-    if (*startOfStacks != 0x00) {
-        TEST_FAILED_AND_HALT("Internal heap too large");
-    }
-
-    // Clean up
-    os_free(intHeap, hugeChunk);
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-
-#endif
-
-// 3. Phase: Check if we can allocate the whole use-area after killing a RAM-hogger
-#if PHASE_3
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 3:"));
-    lcd_line2();
-    lcd_writeProgString(PSTR("Huge alloc    "));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        Heap *heap = os_lookupHeap(i);
-        MemAddr hugeChunk;
-
-        /*
-         * For each allocation strategy the following two steps are executed
-         * 1. Make a RAM-hogger and kill it, such that the heap-cleaner should
-         *    have freed its memory
-         * 2. Test if this is correct with a certain strategy
-         */
-
-        lcd_goto(1, 11);
-        lcd_writeDec(i);
-        lcd_writeProgString(PSTR(":    "));
+/*!
+ * If a reallocation test fails, this function prints "FAIL" and labels the
+ * whole test on that heap as failed.
+ * \param  *heap Heap where the test failed
+ */
+void fail(Heap *heap) {
+    os_enterCriticalSection();
+    if (heap == intHeap) {
         lcd_goto(1, 13);
-#if CHECK_BEST
-        lcd_writeChar('b');
-        hc_startSmallAllocator();
-        hc_killSmallAllocator();
-        os_setAllocationStrategy(heap, OS_MEM_BEST);
-        hugeChunk = os_malloc(heap, os_getUseSize(heap));
-        if (!hugeChunk) {
-            TEST_FAILED_HEAP_AND_HALT("b:Huge alloc fail", heap);
-        } else {
-            os_free(heap, hugeChunk);
-        }
-#endif
+        failI = true;
+    } else {
+        lcd_goto(2, 13);
+        failE = true;
+    }
+    lcd_writeProgString(PSTR("FAIL"));
+    os_leaveCriticalSection();
+    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+}
 
-#if CHECK_WORST
-        lcd_writeChar('w');
-        hc_startSmallAllocator();
-        hc_killSmallAllocator();
-        os_setAllocationStrategy(heap, OS_MEM_WORST);
-        hugeChunk = os_malloc(heap, os_getUseSize(heap));
-        if (!hugeChunk) {
-            TEST_FAILED_HEAP_AND_HALT("w:Huge alloc fail", heap);
-        } else {
-            os_free(heap, hugeChunk);
-        }
-#endif
+/*!
+ * Runs the tests on one of the heaps.
+ * \param  *heap Heap on which the tests are run.
+ */
+void runTest(Heap *heap) {
+    // Try to reallocate memory of another process
+    ATOMIC {
+        test('1', PSTR("Owner"), heap);
 
-#if CHECK_FIRST == 1
-        lcd_writeChar('f');
-        hc_startSmallAllocator();
-        hc_killSmallAllocator();
-        os_setAllocationStrategy(heap, OS_MEM_FIRST);
-        hugeChunk = os_malloc(heap, os_getUseSize(heap));
-        if (!hugeChunk) {
-            TEST_FAILED_HEAP_AND_HALT("f:Huge alloc fail", heap);
-        } else {
-            os_free(heap, hugeChunk);
+        MemAddr addr = (heap == intHeap ? addrI : addrE);
+        EXPECT_ERROR("owner restrict.");
+        {
+            // Attempt the reallocation - error expected
+            addr = os_realloc(heap, addr, 1);
         }
-#endif
+        ASSERT_ERROR(heap, "owner");
 
-#if CHECK_NEXT == 1
-        lcd_writeChar('n');
-        hc_startSmallAllocator();
-        hc_killSmallAllocator();
-        os_setAllocationStrategy(heap, OS_MEM_NEXT);
-        hugeChunk = os_malloc(heap, os_getUseSize(heap));
-        if (!hugeChunk) {
-            TEST_FAILED_HEAP_AND_HALT("n:Huge alloc fail", heap);
+        test('1', PSTR("Owner"), heap);
+        // Check that null is returned
+        if (!addr) {
+            ok(heap);
         } else {
-            os_free(heap, hugeChunk);
+            fail(heap);
         }
-#endif
+        if (heap == intHeap) {
+            errorI = true;
+        } else {
+            errorE = true;
+        }
     }
 
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-#endif
+    // Wait till all errors were provoked
+    while ((IS_TESTING(intHeap) && !errorI) || (IS_TESTING(extHeap) && !errorE)) continue;
 
-// 4. Phase: Main test: Check if heap is cleaned up
-#if PHASE_4
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 4:"));
-    lcd_line2();
-    lcd_writeProgString(PSTR("Heap Cleanup  "));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
+    EXPECT_NO_ERROR;
 
-    // We want to use the default strategy on every heap. After phase 2 we
-    // cannot know which strategy was last used.
-    for (uint8_t i = 0; i < DRIVERS; i++) {
-        os_setAllocationStrategy(os_lookupHeap(i), DEFAULT_ALLOC_STRATEGY);
+    // Expand by the chunk to the right.
+    // Use free memory to the right.
+    test('2', PSTR("R.res."), heap);
+    if (makeTest(heap, 0b1110101, 0b0001100, 0xFF, 0b0001000)) {
+        ok(heap);
+    } else {
+        fail(heap);
     }
 
-    /*
-     * In this phase a swarm of allocation-process is started. These processes
-     * terminate. Thus heap-cleanup should be performed. Whenever a process
-     * terminates, a new one is started in his stead. Every 50 steps we will
-     * check, if the cleanup was successful.
-     */
-    hc_startAllocatorSwarm();
+    // Expand by the chunk to the left
+    // Use free memory to the left or free and malloc.
+    test('3', PSTR("L.res."), heap);
+    if (makeTest(heap, 0b1010011, 0b0011000, 0xFF, 0b0010000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
-    const uint16_t totalRuns = RUNS;
+    // Force expansion by one chunk to the left.
+    test('4', PSTR("L.frc."), heap);
+    if (makeTest(heap, 0b0010000, 0b0011000, 0xFF, 0b0010000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
-    for (uint16_t runs = 0; runs < totalRuns; runs++) {
-        // Every run we start a new allocator and give it some time to allocate
-        // memory
-        hc_waitForFreeProcSlot();
+    // Expand by a bit more than the chunk to the right.
+    // Use free memory to the left and right or free and malloc.
+    test('5', PSTR("LR.res."), heap);
+    if (makeTest(heap, 0b1010101, 0b0001100, 2, 0b0010000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
-        os_exec(swarm_alloc_program, DEFAULT_PRIORITY);
-        delayMs(DEFAULT_OUTPUT_DELAY);
+    // Expand by a bit more than the free memory to the right.
+    // Force expansion to the left and right.
+    test('6', PSTR("LR.frc."), heap);
+    if (makeTest(heap, 0b0010100, 0b0001100, 2, 0b0010000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
+    // Expand chunk to roughly double size without having free memory left or right.
+    // Thereby forcing to move (free and malloc) the chunk.
+    test('7', PSTR("Move"), heap);
+    if (makeTest(heap, 0b1100001, 0b1000000, 0xFF, 0b1000001)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
-        lcd_drawBar((100 * runs) / totalRuns);
-        lcd_goto(2, 6);
-        lcd_writeDec(runs + 1);
-        lcd_writeChar('/');
-        lcd_writeDec(totalRuns);
+    // Shrink chunk to randomly chosen smaller size.
+    test('8', PSTR("Shrink"), heap);
+    if (makeTest(heap, 0b1110111, 0b0000000, 3, 0b0001000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
 
-        /*
-         * Every 50 steps we test if the memory get freed correctly after a
-         * kill. For that, we wait for every big allocator to get killed and
-         * then check if the whole memory is free again
-         */
-        if ((runs + 1) % 50 == 0) {
-            hc_waitForSwarmKill();
-            for (uint8_t i = 0; i < DRIVERS; i++) {
-                Heap *heap = os_lookupHeap(i);
-                MemAddr hugeChunk = os_malloc(heap, os_getUseSize(heap));
-                if (!hugeChunk) {
-                    // We could not allocate all the memory on that heap, so there was
-                    // a leak
-                    TEST_FAILED_HEAP_AND_HALT("Heap not clean:", heap);
-                } else {
-                    os_free(heap, hugeChunk);
-                }
-            }
-            // Since we killed the whole swarm, we have to revive it again before
-            // we jump back to our loop
-            hc_startAllocatorSwarm();
+    // Keep the chunk as is.
+    test('9', PSTR("Keep"), heap);
+    if (makeTest(heap, 0b1110111, 0b0001000, 0xFF, 0b0001000)) {
+        ok(heap);
+    } else {
+        fail(heap);
+    }
+
+    ASSERT_NO_ERROR(heap);
+
+    test(' ', PSTR("done"), heap);
+}
+
+void runTestI(void) {
+    runTest(intHeap);
+}
+
+void runTestE(void) {
+    runTest(extHeap);
+}
+
+void awaitProcess(ProcessID pid) {
+    while (os_getProcessSlot(pid)->state != OS_PS_UNUSED) continue;
+}
+
+REGISTER_AUTOSTART(program)
+void program(void) {
+    stderr = wrappedStderr;
+    ProcessID pidI = 0, pidE = 0;
+
+#if TEST_INTERNAL
+    foreignAlloc(intHeap, &addrI); // Allocate memory for the owner check
+    pidI = os_exec(runTestI, DEFAULT_PRIORITY);
+#endif
+
+#if TEST_EXTERNAL
+    foreignAlloc(extHeap, &addrE); // Allocate memory for the owner check
+    pidE = os_exec(runTestE, DEFAULT_PRIORITY);
+#endif
+
+    if (pidI) awaitProcess(pidI);
+    if (pidE) awaitProcess(pidE);
+
+    if (failE || failI) {
+        ATOMIC {
+            TEST_FAILED("");
+            HALT;
         }
     }
-    hc_waitForSwarmKill();
-
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 4:"));
-    lcd_line2();
-    lcd_writeProgString(PSTR("Heap Cleanup  "));
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-
-#endif
-
-    terminated = true;
 
 // SUCCESS
 #if CONFIRM_REQUIRED
@@ -459,24 +663,4 @@ void main_program(void) {
     lcd_line2();
     lcd_writeProgString(PSTR(" WAIT FOR IDLE  "));
     delayMs(DEFAULT_OUTPUT_DELAY * 6);
-}
-
-/*
- *	Timeout ISR
- */
-ISR(TIMER1_COMPA_vect) {
-    // counts seconds
-    static int16_t timeout_counter = 0;
-    if (terminated) return;
-    timeout_counter++;
-
-    if (timeout_counter >= HARD_TIMEOUT) {
-        TEST_FAILED("Test took too long!");
-        HALT;
-    }
-
-    if (timeout_counter >= SOFT_TIMEOUT) {
-        TEST_FAILED("Test reached soft timeout!");
-        HALT;
-    }
 }

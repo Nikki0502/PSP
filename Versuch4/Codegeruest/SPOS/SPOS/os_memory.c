@@ -210,7 +210,7 @@ void os_free(Heap* heap, MemAddr addr){
 	}
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
-		for(uint16_t i = startOfChunk + sizeOfChunk; i <= heap->allocFrameEnd; i++){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
 			if(os_getMapEntry(heap,i)!=0){
 				heap->allocFrameStart = i;
 				break;
@@ -223,7 +223,7 @@ void os_free(Heap* heap, MemAddr addr){
 		*/
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-		for (uint16_t i = startOfChunk; i >= heap->allocFrameStart; i--){
+		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
 			if(os_getMapEntry(heap,i)!=0){
 				heap->allocFrameEnd = i;
 				break;
@@ -247,6 +247,7 @@ pid	The ProcessID of the process that owns all the memory to be freed
 */
 void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	//os_enterCriticalSection();
+	//os_getUseStart(heap)+os_getUseSize(heap)
 	MemAddr startOfChunk = 0;
 	uint16_t sizeOfChunk = 0;
 	MemAddr current = heap->allocFrameStart;
@@ -263,7 +264,7 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	}
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
-		for(uint16_t i = startOfChunk + sizeOfChunk; i <= heap->allocFrameEnd; i++){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
 			if(os_getMapEntry(heap,i)!=0){
 				heap->allocFrameStart = i;
 				break;
@@ -276,7 +277,7 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 		*/
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-		for (uint16_t i = startOfChunk; i >= heap->allocFrameStart; i--){
+		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
 			if(os_getMapEntry(heap,i)!=0){
 				heap->allocFrameEnd = i;
 				break;
