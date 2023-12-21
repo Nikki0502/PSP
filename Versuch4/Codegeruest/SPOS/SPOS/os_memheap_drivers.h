@@ -30,6 +30,8 @@ typedef struct{
 	AllocStrategy currentStrat;
 	const char *name;
 	MemAddr lastAllocLeader;
+	MemAddr allocFrameStart;
+	MemAddr allocFrameEnd;
 }Heap;
 
 Heap intHeap__;

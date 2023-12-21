@@ -8,7 +8,6 @@
 
 #include "os_memory.h"
 #include <stdbool.h>
-
 //Gibt die erste Speicheradresse von einem freien Block zur¸ck
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr){
 	while(os_getMapEntry(heap, userAddr) == 0x00 && userAddr>=os_getUseStart(heap)){
@@ -30,137 +29,130 @@ uint16_t os_getFreeChunkSize(const Heap *heap, MemAddr userAddr){
 	return size;
 }
 
-// Alloc Strats
+/*
+First-fit strategy.
 
-//First Fit
-MemAddr os_Memory_FirstFit (Heap *heap, size_t size){	
-	MemAddr current = os_getUseStart(heap);
-	uint16_t index = 0;
-	while(current<(os_getUseStart(heap)+os_getUseSize(heap))){
-		volatile uint8_t val = os_getMapEntry(heap,current);
-		if(val==0){
-			index +=1;
+Parameters
+heap	The heap in which we want to find a free chunk
+size	The size of the desired free chunk
+start   The addr where the strat starts User
+
+Returns
+The first address(User) of the found free chunk, or 0 if no chunk was found.
+*/
+MemAddr os_Memory_FirstFit (Heap *heap, size_t size, MemAddr start){
+	MemAddr countedSize = 0;
+	while (start < os_getUseStart(heap)+os_getUseSize(heap)){
+		if(os_getMapEntry(heap,start)==0){
+			countedSize += 1;
 		}
 		else{
-			index = 0;
+			countedSize = 0;
 		}
-		current +=1;
-		if(index==size){
-			return (current - size);
+		start += 1;
+		if(countedSize==size){
+			return (start-size);
 		}
-		
 	}
 	return 0;
 }
-//Nehme den ersten freien Speicherblock der groﬂ genug ist beginnend am letzten allozierten Chunk
-MemAddr os_Memory_NextFit (Heap *heap, size_t size){
-	/*
-	MemAddr current = heap->lastAllocLeader;
-	current += os_getChunkSize(heap,current);
-	uint16_t index = 0;
-	while(current<(os_getUseStart(heap)+os_getUseSize(heap))){
-		if(os_getMapEntry(heap,current)==0){
-			index +=1;
-		}
-		else{
-			index = 0;
-		}
-		current +=1;
-		if(index==size){
-			return (current - size);
-		}
+/*
+Next-fit strategy.
+
+Parameters
+heap	The heap in which we want to find a free chunk
+size	The size of the desired free chunk
+
+Returns
+The first address of the found free chunk. Returns 0, if no chunk was found.
+
+*/	
+MemAddr os_Memory_NextFit (Heap *heap, size_t size){ 
+	if(heap->lastAllocLeader==os_getUseStart(heap)||heap->lastAllocLeader==0){
+		return os_Memory_FirstFit(heap, size, os_getUseStart(heap));
 	}
-	index = 0;
-	current = os_getUseStart(heap);
-	while(current<heap->lastAllocLeader){
-		if(os_getMapEntry(heap,current)==0){
-			index +=1;
+	else{
+		MemAddr behindStart=0;
+		behindStart = os_Memory_FirstFit(heap, size, heap->lastAllocLeader);
+		if(behindStart==0){
+			behindStart =  os_Memory_FirstFit(heap, size, os_getUseStart(heap));
 		}
-		else{
-			index = 0;
-		}
-		current +=1;
-		if(index==size){
-			return (current - size);
-		}
+		return behindStart;
 	}
-	return 0;
-	*/
-	MemAddr current = heap->lastAllocLeader;
-	current += os_getChunkSize(heap,current);
-	uint16_t index = 0;
-	if(current==os_getUseStart(heap)){
-		return os_Memory_FirstFit(heap,size);
-	}
-	while(current!=(heap->lastAllocLeader)-1){
-		//hat das ende erreicht
-		if(current==os_getUseStart(heap)+os_getUseSize(heap)){
-			current = os_getUseStart(heap);
-			index = 0;
-		}
-		//sonst
-		if(os_getMapEntry(heap,current)==0){
-			index +=1;
-		}
-		else{
-			index = 0;
-		}
-		current +=1;
-		if(index==size){
-			return (current - size);
-		}
-	}
-	return 0;
-	
 }
-//W‰hlt den grˆﬂten freien Speicherblock aus, der groﬂ genug ist
+/*
+Worst-fit strategy.
+
+Parameters
+heap	The heap in which we want to find a free chunk
+size	The size of the desired free chunk
+
+Returns
+The first address of the found free chunk. Returns 0, if no chunk was found.
+*/
 MemAddr os_Memory_WorstFit (Heap *heap, size_t size){
 	MemAddr current = os_getUseStart(heap);
-	MemAddr biggestChunkLeader = 0;
-	size_t biggestSize = 0;
-	while(current  <   (os_getUseStart(heap) + os_getUseSize(heap))   ){
-	    if(os_getMapEntry(heap,current) == 0){	
-			if(biggestSize < os_getFreeChunkSize(heap, current)){
-				biggestSize = os_getFreeChunkSize(heap,current);
-				biggestChunkLeader = os_getFirstByteOfFree(heap,current);
-				current += biggestSize;
-			}
+	MemAddr biggestChunkAddr = 0;
+	uint16_t biggestChunkSize = 0;
+	uint16_t currentChunkSize = 0;
+	while(current < os_getUseStart(heap)+os_getUseSize(heap)){
+		if(os_getMapEntry(heap,current)==0){
+			currentChunkSize +=1;
+		}
+		else{
+			currentChunkSize = 0;
 		}
 		current +=1;
-	} 
-	if(size <= biggestSize){
-		return biggestChunkLeader;
+		if(currentChunkSize>biggestChunkSize){
+			biggestChunkSize=currentChunkSize;
+			biggestChunkAddr = current - biggestChunkSize;
+		}
+	}
+	if(biggestChunkSize>=size){
+		return biggestChunkAddr;
 	}
 	return 0;
 }
-//W‰ht den kleinsten freien Speicherblock aus, der groﬂ genug ist
+/*
+Best-fit strategy.
+
+Parameters
+heap	The heap in which we want to find a free chunk
+size	The size of the desired free chunk
+
+Returns
+The first address of the found free chunk. Returns 0, if no chunk was found.
+*/
 MemAddr os_Memory_BestFit (Heap *heap, size_t size){
 	MemAddr current = os_getUseStart(heap);
-	MemAddr bestChunkLeader = 0;
-	size_t bestSize =0;
-	while(current < (os_getUseStart(heap) + os_getUseSize(heap))){
-		if(os_getMapEntry(heap,current) == 0){
-			if(os_getFreeChunkSize(heap,current) == size){
-				return os_getFirstByteOfFree(heap,current);
-			}
-			if(bestChunkLeader != 0){
-				if(os_getFreeChunkSize(heap,current) < bestSize && os_getFreeChunkSize(heap,current) >= size){
-					bestChunkLeader = os_getFirstByteOfFree(heap,current);
-					bestSize = os_getFreeChunkSize(heap,current);
-					current += bestSize;
-				}
-			}
-			else{
-				if(os_getFreeChunkSize(heap,current) >= size ){
-					bestChunkLeader = os_getFirstByteOfFree(heap,current);
-					bestSize = os_getFreeChunkSize(heap,current);
-					current += bestSize;
-				}
-			}
+	uint16_t currentChunkSize = 0;
+	uint16_t smallestChunkSize = 0;
+	MemAddr smallestChunkAddr = 0;
+	while(current < os_getUseStart(heap)+os_getUseSize(heap)){
+		if(os_getMapEntry(heap,current)==0){
+			
+			currentChunkSize +=1;
 		}
-		current += 1;
+		else{
+			if(currentChunkSize>=size){
+				if(currentChunkSize<smallestChunkSize||smallestChunkSize==0){
+					smallestChunkSize = currentChunkSize;
+					smallestChunkAddr = current - smallestChunkSize;
+				}
+			}
+			currentChunkSize = 0;
+		}
+		current+=1;
 	}
-		return bestChunkLeader;
+	if(currentChunkSize>=size){
+		if(currentChunkSize<smallestChunkSize||smallestChunkSize==0){
+			smallestChunkSize = currentChunkSize;
+			smallestChunkAddr = current - smallestChunkSize;
+		}
+	}
+	if(smallestChunkSize>=size){
+		return smallestChunkAddr;
+	}
+	return 0;
 }
-
 

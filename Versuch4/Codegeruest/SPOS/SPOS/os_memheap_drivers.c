@@ -26,7 +26,9 @@ Heap intHeap__= {
 		.startaddrUse =(MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
 		.currentStrat = OS_MEM_FIRST,
 		.name = intName,
-		.lastAllocLeader = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3))
+		.lastAllocLeader = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
+		.allocFrameStart = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)),
+		.allocFrameEnd = (MemAddr)(0x100 + HEAPOFFSET + ((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)) + (((AVR_MEMORY_SRAM/2 - HEAPOFFSET)/3)*2)
 };
 
 //Heap struct mit charakteristischen Attributen
@@ -36,11 +38,13 @@ Heap extHeap__ = {
 	.sizeHeap = (size_t)(0xFFFF),
 	.sizeMap = (size_t)((0xFFFF)/3),
 	.sizeUser = (size_t)(((0xFFFF)/3)*2),
-	.startaddrMap= (MemAddr)(0x0),
+	.startaddrMap= (MemAddr)(0x00),// nicht sicher
 	.startaddrUse= (MemAddr)(((0xFFFF)/3)),
 	.currentStrat = OS_MEM_FIRST,
 	.name = extName,
-	.lastAllocLeader = (MemAddr)(((0xFFFF)/3))
+	.lastAllocLeader = (MemAddr)(((0xFFFF)/3)),
+	.allocFrameStart = (MemAddr)(((0xFFFF)/3)),
+	.allocFrameEnd = (MemAddr)(((0xFFFF)/3))+(((0xFFFF)/3)*2)
 };
 
 //Initialisiert die Map(setzt alle Einträge auf 0(unused))

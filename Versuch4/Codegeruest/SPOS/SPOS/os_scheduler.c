@@ -379,10 +379,9 @@ bool os_kill(ProcessID pid){
 	// Aufraeumen des Processes
 	os_processes[pid].state = OS_PS_UNUSED;
 	
-	os_freeProcessMemory(intHeap,pid);
-	os_freeProcessMemory(extHeap,pid);
-	
-	
+	for(uint8_t i = 0; i < os_getHeapListLength(); i++){
+		os_freeProcessMemory(os_lookupHeap(i),pid);
+	}
 	// Selbst Terminierung
 	// nicht verlassen werden darf bis naechter Proc durch Scheduler
 	os_leaveCriticalSection();

@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 
+
 /*
  * Nible Management
  */
@@ -119,7 +120,7 @@ uint16_t os_getChunkSize(const Heap *heap, MemAddr userAddr){
 		currentAddrChunk +=1;
 		valueOfcurrentAddr =os_getMapEntry(heap,currentAddrChunk);
 	}
-	return size;
+	return size+1;
 }
 
 
@@ -153,23 +154,35 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 	/* Je nach Schedulingstrategie wird die erste Adresse des zu 
 	 verwendenen freien Speicherblocks zurückgegeben */
 	MemAddr firstChunkAddrUser=0;
-	switch (os_getAllocationStrategy(heap)){
-		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size); break;
+	AllocStrategy current =os_getAllocationStrategy(heap);
+	switch (current){
+		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size,os_getUseStart(heap)); break;
 		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
 		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size);   break;
-		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size); 
-		                  if(firstChunkAddrUser == 0){
-							  heap->lastAllocLeader = heap->startaddrUse; }
-						  else {
-							  heap->lastAllocLeader = firstChunkAddrUser;}             
-	                                                                           break;
+		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size);   break;
+	}
+	// next alloc leader zu weisen wenn Next Fit
+	if(current == OS_MEM_NEXT){
+		if(firstChunkAddrUser!=0){
+			heap->lastAllocLeader=firstChunkAddrUser+size;
+		}
+		else{
+			heap->lastAllocLeader=firstChunkAddrUser;
+		}
 	}
 	//falls kein Speicherblock gefunden werden konnte
 	// koennte zu problemem fuehren bei extHEAP
-	if(firstChunkAddrUser==0){
+	if(firstChunkAddrUser == 0){
 		//Start von letzten allozierten Bereich
 		os_leaveCriticalSection();
 		return 0;
+	}
+	// Optimierungs Frame
+	if(firstChunkAddrUser< heap->allocFrameStart){
+		heap->allocFrameStart = firstChunkAddrUser;
+	}
+	if(firstChunkAddrUser+size> heap->allocFrameEnd){
+		heap->allocFrameEnd = firstChunkAddrUser+size;
 	}
 	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
 	os_setMapAddrValue(heap,firstChunkAddrUser,(MemValue)os_getCurrentProc());
@@ -182,7 +195,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 }
 // Gibt Speicherplatz, der einem Prozess alloziiert wurde frei
 void os_free(Heap* heap, MemAddr addr){
-	os_enterCriticalSection();
+	//os_enterCriticalSection();
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);
 	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
 	//versucht speicher von anderen Process frei zugeben
@@ -191,31 +204,91 @@ void os_free(Heap* heap, MemAddr addr){
 		os_error("os_free:not the right MemChunk");
 	}
 	else{
-		os_setMapAddrValue(heap,startOfChunk,0);
-		for (uint16_t i =1; i <= sizeOfChunk ; i++){
+		for (uint16_t i =0; i < sizeOfChunk ; i++){
 			os_setMapAddrValue(heap,(startOfChunk + i),0);
 		}
 	}
-	os_leaveCriticalSection();
+	// Optimierungs Frame
+	if(startOfChunk == heap->allocFrameStart){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i <= heap->allocFrameEnd; i++){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameStart = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk == heap->allocFrameStart){
+			heap->allocFrameStart = os_getUseStart(heap);
+		}
+		*/
+	}
+	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+		for (uint16_t i = startOfChunk; i >= heap->allocFrameStart; i--){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameEnd = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
+		}
+		*/
+	}
+	//os_leaveCriticalSection();
 }
 
+/*
+This function realises the garbage collection. When called, every allocated memory chunk of the given process is freed
 
+Parameters
+heap	The heap on which we look for allocated memory
+pid	The ProcessID of the process that owns all the memory to be freed
+*/
 void os_freeProcessMemory (Heap *heap, ProcessID pid){
-	os_enterCriticalSection();
-	MemAddr current =os_getUseStart(heap);
-	while(current < (os_getUseStart(heap)+os_getUseSize(heap))){
+	//os_enterCriticalSection();
+	MemAddr startOfChunk = 0;
+	uint16_t sizeOfChunk = 0;
+	MemAddr current = heap->allocFrameStart;
+	while (current< heap->allocFrameEnd){
 		if(os_getMapEntry(heap,current)== pid){
-			MemAddr startOfChunk = current;
-			uint16_t sizeOfChunk = os_getChunkSize(heap,startOfChunk);
+			startOfChunk = current;
+			sizeOfChunk = os_getChunkSize(heap,startOfChunk);
 			os_setMapAddrValue(heap,startOfChunk,0);
-			// i < sizeOfChunk?
-			for (uint16_t i =1; i <= sizeOfChunk ; i++){
+			for (uint16_t i =1; i < sizeOfChunk ; i++){
 				os_setMapAddrValue(heap,(startOfChunk + i),0);
 			}
 		}
 		current +=1;
 	}
-	os_leaveCriticalSection();
+	// Optimierungs Frame
+	if(startOfChunk == heap->allocFrameStart){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i <= heap->allocFrameEnd; i++){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameStart = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk == heap->allocFrameStart){
+			heap->allocFrameStart = os_getUseStart(heap);
+		}
+		*/
+	}
+	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+		for (uint16_t i = startOfChunk; i >= heap->allocFrameStart; i--){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameEnd = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
+		}
+		*/
+	}
+	//os_leaveCriticalSection();
 }
 
 /*
@@ -229,16 +302,18 @@ newChunk	The first Address of the new Chunk
 newSize	The size of the new Chunk
 */
 void moveChunk (Heap *heap, MemAddr oldChunk, size_t oldSize, MemAddr newChunk, size_t newSize){
-	// move Map
-	os_setMapAddrValue(heap,newChunk,(MemValue)os_getCurrentProc());
-	for (uint16_t i =1; i<newSize;i++){
-		os_setMapAddrValue(heap,(newChunk + i),0xF);
-	}
-	// move User
-	MemValue valueInOld;
-	for (uint16_t i = 0 ; i <= oldSize; i++){
-		valueInOld = heap->driver->read(oldChunk+i);
-		heap->driver->write(newChunk+i,valueInOld);
+	if (oldSize < newSize){
+		os_setMapAddrValue(heap,newChunk,os_getCurrentProc());
+		//Map verschieben
+		for(uint16_t i = 1; i<newSize; i++){
+			os_setMapAddrValue(heap,newChunk + i,0xF);
+		}
+		//Move Usebereich
+		MemValue vorherigerWert;
+		for(uint16_t i = 0; i<newSize;i++){
+			vorherigerWert = heap->driver->read(oldChunk+i);
+			heap->driver->write(newChunk+i, vorherigerWert);
+		}
 	}
 }
 /*
@@ -255,58 +330,79 @@ First adress (in use space) of the newly allocated chunk
 */
 MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size){
 	os_enterCriticalSection();
-	MemAddr oldStartOfChunkUser = os_getFirstByteOfChunk(heap,addr);
-	size_t oldSizeOfChunk = os_getChunkSize(heap,addr);
-	MemAddr firstAddrOfNewChunk=0;
-	MemAddr current;
-	if(os_getMapEntry(heap,oldStartOfChunkUser)!=os_getCurrentProc()){
-		os_error("Nicht der richtige Owner");
+	MemAddr current; //Hilfsvariable zum Zählen
+	MemAddr reallocLeader = os_getFirstByteOfChunk(heap,addr);
+	//Realloc Chunk gehört aktuellem Prozess nicht
+	if(os_getMapEntry(heap,reallocLeader) != os_getCurrentProc()){
+		os_error("Speicherbereich gehört diesem Prozess nicht");
 		os_leaveCriticalSection();
 		return 0;
 	}
-	if (size<oldSizeOfChunk){
-		os_leaveCriticalSection();
-		return 0;
-	}
-	//Nach dem Chunk
-	current = oldStartOfChunkUser + oldSizeOfChunk;
-	size_t roomUnderTheChunk=0;
-	while(os_getMapEntry(heap,current) == 0x00 && current < ( os_getUseStart(heap)+os_getUseSize(heap))){
-		current +=1;
-		roomUnderTheChunk +=1;
-	}
-	if(roomUnderTheChunk+oldSizeOfChunk>=size){
-		for(uint16_t i = 1; i <= size-oldSizeOfChunk; i++){
-			os_setMapAddrValue(heap,(oldStartOfChunkUser + oldSizeOfChunk)+i,0xF);
+	
+	size_t oldSize = os_getChunkSize(heap,reallocLeader);
+	MemAddr freeChunkAfter = reallocLeader + oldSize; // erste Adresse des Bereichs nach dem Chunk
+	size_t freeChunkAfterSize = 0;
+	//Kleiner machen
+	if(oldSize>size){
+		for(uint16_t i = reallocLeader+size; i < reallocLeader+oldSize;i++){
+			os_setMapAddrValue(heap,i,0x0);
 		}
 		os_leaveCriticalSection();
-		return oldStartOfChunkUser;
+		return reallocLeader;
 	}
-	//Vor dem Chunk
-	current = oldStartOfChunkUser;
-	size_t roomOboveTheChunk=0;
-	while(os_getMapEntry(heap,current) == 0x00 && current > os_getMapStart(heap)){
-		current -=1;
-		roomOboveTheChunk +=1;
+	//Fall: Platz nach dem Chunk reicht aus
+	if(os_getMapEntry(heap,freeChunkAfter)== 0){
+		freeChunkAfterSize= os_getFreeChunkSize(heap,freeChunkAfter);
+		//Reicht der Platz hinter dem Chunk?
+		if( (freeChunkAfterSize + oldSize) >= size){
+			for(uint16_t i = 0; i < size-oldSize; i++){
+				os_setMapAddrValue(heap,(reallocLeader + oldSize)+i,0xF);
+			}
+			os_leaveCriticalSection();
+			return reallocLeader;
+		}
 	}
-	if(roomOboveTheChunk+roomUnderTheChunk+oldSizeOfChunk>=size){
-		firstAddrOfNewChunk = oldStartOfChunkUser - roomOboveTheChunk;
-		moveChunk(heap,oldStartOfChunkUser,oldSizeOfChunk,firstAddrOfNewChunk,size);
+	
+	//Fall: Platz nach dem Chunk reicht nicht aus aber zsm mit Platz vor dem Chunk
+	MemAddr currVorher = reallocLeader - 1 ;
+	MemAddr leaderVorher;
+	size_t sizeVorher = 0;
+	//Größe des FreeChunk vor dem Chunk ermitteln
+	while ( os_getMapEntry(heap,currVorher) == 0 ) {
+		sizeVorher  += 1;
+		currVorher --;
 	}
-	//Move Chunk
+	leaderVorher = reallocLeader - sizeVorher;
+	//Reichen die Chunks vorne und hinten aus?
+	if((sizeVorher + freeChunkAfterSize + oldSize) >= size){
+		//Chunk so weit wie möglich nach Vorne verschieben
+		moveChunk(heap,reallocLeader,oldSize, leaderVorher, size);
+		//Nicht mehr benötigten Speicherplatz freigeben
+		current = leaderVorher + size;
+		while( os_getMapEntry(heap,current) == 0xF ) {
+			os_setMapAddrValue(heap,current,0);
+			current++;
+		}
+		os_leaveCriticalSection();
+		return leaderVorher;
+	}
+	
+	//Fall: Platz nach dem Chunk und vor dem Chunk reichen nicht zusammen aus
+	MemAddr firstAddrOfNewChunk = 0;
+	//Neuen Platz finden
 	switch (os_getAllocationStrategy(heap)){
-		case OS_MEM_FIRST: firstAddrOfNewChunk = os_Memory_FirstFit(heap,size); break;
+		case OS_MEM_FIRST: firstAddrOfNewChunk = os_Memory_FirstFit(heap,size,os_getUseStart(heap)); break;
 		case OS_MEM_WORST: firstAddrOfNewChunk = os_Memory_WorstFit(heap,size); break;
 		case OS_MEM_BEST: firstAddrOfNewChunk = os_Memory_BestFit(heap,size); break;
 		case OS_MEM_NEXT: firstAddrOfNewChunk = os_Memory_NextFit(heap,size); break;
 	}
-	//falls kein Speicherblock gefunden werden konnte
-	// koennte zu problemem fuehren bei extHEAP
-	if(firstAddrOfNewChunk==0){
+	if(firstAddrOfNewChunk == 0){
 		os_leaveCriticalSection();
 		return 0;
 	}
-	moveChunk(heap,oldStartOfChunkUser,oldSizeOfChunk,firstAddrOfNewChunk,size);
+	moveChunk(heap,reallocLeader,oldSize,firstAddrOfNewChunk,size);
+	//alten Chunk komplett freigeben(free)
+	os_free(heap,addr);
 	os_leaveCriticalSection();
 	return firstAddrOfNewChunk;
 }
