@@ -57,6 +57,10 @@ SchedulingStrategy os_getSchedulingStrategy(void);
 //! Calculates the checksum of the stack for the corresponding process of pid.
 StackChecksum os_getStackChecksum(ProcessID pid);
 
+//! Gibt die Rechenzeit des aktuellen Prozesses ab und setzt diesen auf BLOCKED damit dieser
+//! im nächsten Schedule nicht gewählt wird
+void os_yield(void);
+
 //----------------------------------------------------------------------------
 // Critical section management
 //----------------------------------------------------------------------------

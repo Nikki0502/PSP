@@ -73,9 +73,11 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 			processInReady+=1;
 		}
 	}
-	//falls kein Prozess in Ready soll idle
+	//falls kein Prozess in Ready soll idle auﬂer ein Prozess hat den state OS_PS_BLOCKED
 	if(processInReady == 0){
-		current = 0;
+		if(processes[current].state != OS_PS_BLOCKED){
+			current =0;
+	    }
 	}
 	else{
 		while(true){
@@ -111,20 +113,25 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
 			processInReady+=1;
 		}
 	}
-	// um nicht das array mehr mals durch gehen zu muesse modulo benutzen
-	randnumber = randnumber % processInReady;
-	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
-		if(randnumber== 0){
-			current = i;
-		}
-		if(processes[i].state== OS_PS_READY){
-			randnumber-=1;
-		}
-	}	
-	//fals kein prozess ready ist soll idle 
+	//falls kein Prozess in Ready soll idle auﬂer ein Prozess hat den state OS_PS_BLOCKED
 	if (processInReady == 0){
-		current = 0;
+		if(processes[current].state != OS_PS_BLOCKED){
+			current =0;
+		}
 	}
+	else{
+		// um nicht das array mehr mals durch gehen zu muesse modulo benutzen
+		randnumber = randnumber % processInReady;
+		for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
+			if(randnumber== 0){
+				current = i;
+			}
+			if(processes[i].state== OS_PS_READY){
+			randnumber-=1;
+			}
+		}	
+	}
+	
     return current;
 }
 
@@ -147,13 +154,19 @@ ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) 
 			processInReady+=1;
 		}
 	}
-	//falls kein Prozess in Ready soll idle
+	//falls kein Prozess in Ready soll idle auﬂer der Prozess hat hat den state OS_PS_BLOCKED
 	if(processInReady == 0){
-		current = 0;
-		return current;
+		if(processes[current].state != OS_PS_BLOCKED){
+			current = 0;
+			return current;
+		}
 	}
-   
+	
 	schedulingInfo.timeslice --;
+	//Falls der Prozess blocked ist timeslice auf 0 setzen da dieser nicht ausgew‰hlt werden soll
+	if(processes[current].state == OS_PS_BLOCKED){
+		schedulingInfo.timeslice = 0;
+	}
 	//test fuer Terminieren ob entweder Quantum leer oder hat sich selbst gekillt 
 	if (schedulingInfo.timeslice==0 || processes[current].state==OS_PS_UNUSED){
 		current = os_Scheduler_Even(processes,current);
@@ -181,21 +194,26 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
 			processInReady+=1;
 		}
 	}
-	//falls kein Prozess in Ready soll idle
+	//falls kein Prozess in Ready soll idle auﬂer der Prozess hat hat den state OS_PS_BLOCKED
 	if(processInReady == 0){
-		current = 0;
-		return current;
+		if(processes[current].state!=OS_PS_BLOCKED){
+			current = 0;
+			return current;
+		}
+		else{
+			schedulingInfo.age[current]=0;
+			return current;
+		}
 	}
     // This is a presence task
 	//schedulingInfo.age[current] += processes[current].priority;
 	for (int i =1; i< MAX_NUMBER_OF_PROCESSES;i++){
 		schedulingInfo.age[i] += processes[i].priority;
 	}
-	
 	ProcessID oldest=1;
 	for(int i =1; i<MAX_NUMBER_OF_PROCESSES;i++){
 		//falls kleiner als mom aeltester 
-		if(processes[i].state!= OS_PS_UNUSED){
+		if(processes[i].state != OS_PS_UNUSED && processes[i].state != OS_PS_BLOCKED){
 			if(schedulingInfo.age[oldest]< schedulingInfo.age[i]){
 				oldest = i;
 			}
@@ -245,9 +263,12 @@ ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID curr
 			processInReady+=1;
 		}
 	}
-	//falls kein Prozess in Ready soll idle
+	//falls kein Prozess in Ready soll idle auﬂer der Prozess hat hat den state OS_PS_BLOCKED
 	if(processInReady == 0){
-		current = 0;
+		if(processes[current].state != OS_PS_BLOCKED){
+			current = 0;
+			return current;
+		}
 		return current;
 	}
 	

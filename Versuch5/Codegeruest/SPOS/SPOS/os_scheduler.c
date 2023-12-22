@@ -83,13 +83,14 @@ ISR(TIMER2_COMPA_vect) {
 	
 
 	//5.Setzen des Prozesszustandes des aktuellen Prozesses auf OS_PS_READY
-	//ausser das programm terminiert
-	if (os_processes[currentProc].state != OS_PS_UNUSED){
+	//ausser das programm terminiert oder gibt seine Rechenzeit mit os_yield ab
+	if ( (os_processes[currentProc].state != OS_PS_UNUSED) && (os_processes[currentProc].state != OS_PS_BLOCKED) ){
 		os_processes[currentProc].state = OS_PS_READY;
 	}
 	//Speichern der Prüfsumme auf den Schedulerstack
 	os_processes[currentProc].checksum = os_getStackChecksum(currentProc);
 	
+	ProcessID alterProc = currentProc;
 	//6.Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
 	switch(os_getSchedulingStrategy()){
 		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
@@ -101,6 +102,10 @@ ISR(TIMER2_COMPA_vect) {
 	//falls pruefsumme nicht mehr gleich ist
 	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){
 		os_error("Pruefsumme falchs");
+	}
+	//Setzten des blocked Prozesses wieder auf ready falls es einen gibt
+	if(os_processes[alterProc].state == OS_PS_BLOCKED){
+		os_processes[alterProc].state = OS_PS_READY;
 	}
 
 	//7.Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING
@@ -391,4 +396,25 @@ bool os_kill(ProcessID pid){
 	while(pid==currentProc){}
 		
 	return true;
+}
+
+//! Gibt die Rechenzeit des aktuellen Prozesses ab und setzt diesen auf BLOCKED damit dieser
+//! im nächsten Schedule nicht gewählt wird
+void os_yield(void) {
+	os_enterCriticalSection();
+	//Prozess blockieren
+	os_processes[currentProc].state = OS_PS_BLOCKED;
+	//Status des Global Interrupt Enable Bits (GIEB) des SREG-Registers sichern
+	uint8_t savedSERG = (SREG & 0b10000000);
+	//Geöffnete CS speichern
+	uint8_t currentOpenCS = criticalSectionCount; 
+	//sicher gehen, dass der Scheduler aktiv ist
+    TIMSK2 |= (1 << OCIE2A);
+	// ISR manuell aufrufen
+	TIMER2_COMPA_vect();
+	//CS wiederherstellen
+	criticalSectionCount = currentOpenCS;
+	//Global Interrupt Enable Bit wiederherstellen
+	SREG |= savedSERG;
+	os_leaveCriticalSection();
 }
