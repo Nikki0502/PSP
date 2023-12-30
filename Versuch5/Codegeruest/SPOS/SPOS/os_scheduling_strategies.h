@@ -38,9 +38,32 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
 //! RunToCompletion strategy
 ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID current);
 
+//! fuer RoundRobin
 typedef struct{
 	uint16_t timeslice;
 	Age age[MAX_NUMBER_OF_PROCESSES]; 
 }SchedulingInformation;
 
+//! Warteschlange
+typedef struct{
+	ProcessID[] data;
+	size_t size;
+	MemAddr head;
+	MemAddr tail;
+	}ProcessQueue;
+
+//! Funktionen fuer Benutzung der Warteschlange
+uint8_t MLFQ_MapToQueue (Priority prio);
+uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID);
+ProcessQueue * MLFQ_getQueue (uint8_t queueID);
+void pqueue_init (ProcessQueue *queue);
+void pqueue_reset (ProcessQueue *queue);
+bool pqueue_hasNext (const ProcessQueue *queue);
+ProcessID pqueue_getFirst (const ProcessQueue *queue);
+void pqueue_dropFirst (ProcessQueue *queue);
+void pqueue_append (ProcessQueue *queue, ProcessID pid);
+void pqueue_removePID (ProcessQueue *queue, ProcessID pid);
+void os_initSchedulingInformation ();
+void MLFQ_removePID (ProcessID pid);
+ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current);
 #endif

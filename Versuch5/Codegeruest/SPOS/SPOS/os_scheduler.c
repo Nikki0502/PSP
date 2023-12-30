@@ -393,6 +393,7 @@ bool os_kill(ProcessID pid){
 	if (pid==currentProc && criticalSectionCount >0){
 		os_leaveCriticalSection();
 	}
+	// ersetzbar durch os_yield aber erstmal nicht fuer stabilitaet
 	while(pid==currentProc){}
 		
 	return true;

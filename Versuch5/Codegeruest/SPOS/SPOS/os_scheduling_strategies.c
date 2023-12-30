@@ -277,3 +277,141 @@ ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID curr
 	}
     return current;
 }
+
+
+//! Funktionen fuer MLFQ
+
+/*
+Maps a process-priority to a priority class.
+
+Parameters
+prio	The process-priority.
+
+Returns
+The index of the ProcessQueue/priority class
+*/
+uint8_t MLFQ_MapToQueue (Priority prio){}
+
+/*
+Returns the default number of timeslices for a specific ProcessQueue/priority class.
+
+Parameters
+queueID	The index of the ProcessQueue/the priority class.
+
+Returns
+Number of timeslices.
+*/
+uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID){}
+	
+/*
+Returns the corresponding ProcessQueue.
+
+Returns a pointer to the ProcessQueue with index queueID from the schedulingInformation
+
+Parameters
+queueID	Index of the queue.
+
+Returns
+Pointer to the specific ProcessQueue.
+*/
+ProcessQueue * MLFQ_getQueue (uint8_t queueID){}
+
+/* 
+ Initializes the given ProcessQueue with a predefined size
+ Parameters
+ queue The ProcessQueue to initialize.
+*/ 
+void pqueue_init ( ProcessQueue * queue){}
+
+/*
+Resets the given ProcessQueue.
+
+Parameters
+queue	The ProcessQueue to reset.
+*/
+void pqueue_reset (ProcessQueue *queue){}
+
+/*
+Checks whether there is next a ProcessID.
+
+Parameters
+queue	The ProcessQueue to check.
+
+Returns
+True if queue has a next element
+*/
+bool pqueue_hasNext (const ProcessQueue *queue){}
+
+/*
+Returns the first ProcessID of the given ProcessQueue.
+
+Parameters
+queue	The specific ProcessQueue.
+
+Returns
+the first ProcessID.
+*/
+ProcessID pqueue_getFirst (const ProcessQueue *queue){}
+
+/*
+Drops the first ProcessID of the given ProcessQueue.
+
+Parameters
+queue	The specific ProcessQueue.
+*/
+void pqueue_dropFirst (ProcessQueue *queue){}
+
+/*
+Appends a ProcessID to the given ProcessQueue.
+
+Parameters
+queue	The ProcessQueue in which the pid should be appended.
+pid	The ProcessId to append.
+*/
+void pqueue_append (ProcessQueue *queue, ProcessID pid){}
+
+/*
+Removes a ProcessID from the given ProcessQueue.
+
+Parameters
+queue	The ProcessQueue from which the pid should be removed.
+pid	The ProcessId to remove.
+*/
+void pqueue_removePID (ProcessQueue *queue, ProcessID pid){}
+
+/*
+Reset the scheduling information for a specific process slot This is necessary when a new process is started to clear out any leftover data from a process that previously occupied that slot
+
+Parameters
+id	The process slot to erase state for
+*/
+void os_initSchedulingInformation (){}
+
+/*
+Function that removes the given ProcessID from the ProcessQueues.
+
+Parameters
+pid	The ProcessId to remove.
+*/
+void MLFQ_removePID (ProcessID pid){}
+
+/*
+This function implements the multilevel-feedback-queue with 4 priority-classes. 
+Every process is inserted into a queue of a priority-class and gets a default amount of timeslices which are class dependent.
+If a process has no timeslices left, it is moved to the next class. If a process yields, it is moved to the end of the queue.
+
+Parameters
+processes	An array holding the processes to choose the next process from.
+current	The id of the current process.
+
+Returns
+The next process to be executed determined on the basis of the even strategy.
+*/
+ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){}
+
+
+
+
+
+
+

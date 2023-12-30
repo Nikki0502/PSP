@@ -26,7 +26,8 @@ typedef enum SchedulingStrategy {
     OS_SS_RANDOM,
     OS_SS_RUN_TO_COMPLETION,
     OS_SS_ROUND_ROBIN,
-    OS_SS_INACTIVE_AGING
+    OS_SS_INACTIVE_AGING,
+	OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE
 } SchedulingStrategy;
 
 //----------------------------------------------------------------------------
@@ -76,5 +77,8 @@ void os_dispatcher(void);
 
 //! Kills Programm
 bool os_kill(ProcessID pid);
+
+//! yields Process
+void os_yield(void);
 
 #endif
