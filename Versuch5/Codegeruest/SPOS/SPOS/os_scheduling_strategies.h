@@ -13,6 +13,7 @@
 
 #include "defines.h"
 #include "os_scheduler.h"
+#include "os_memory.h"
 
 //! Structure used to store specific scheduling informations such as a time slice
 // This is a presence task
@@ -46,7 +47,7 @@ typedef struct{
 
 //! Warteschlange
 typedef struct{
-	ProcessID[] data;
+	ProcessID data[MAX_NUMBER_OF_PROCESSES];
 	size_t size;
 	MemAddr head;
 	MemAddr tail;

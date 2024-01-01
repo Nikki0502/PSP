@@ -19,4 +19,5 @@ MemAddr os_Memory_BestFit (Heap *heap, size_t size);
 MemAddr os_getFirstByteOfFree(const Heap *heap, MemAddr userAddr);
 uint16_t os_getFreeChunkSize(const Heap *heap, MemAddr userAddr);
 
+
 #endif /* OS_MEMORY_STRATEGIES_H_ */
