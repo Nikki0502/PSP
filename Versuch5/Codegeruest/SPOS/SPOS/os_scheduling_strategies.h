@@ -49,8 +49,8 @@ typedef struct{
 typedef struct{
 	ProcessID data[MAX_NUMBER_OF_PROCESSES];
 	size_t size;
-	MemAddr head;
-	MemAddr tail;
+	uint8_t head;
+	uint8_t tail;
 	}ProcessQueue;
 
 //! Funktionen fuer Benutzung der Warteschlange

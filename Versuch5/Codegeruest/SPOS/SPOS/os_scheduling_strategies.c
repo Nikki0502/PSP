@@ -321,15 +321,26 @@ ProcessQueue * MLFQ_getQueue (uint8_t queueID){}
  Parameters
  queue The ProcessQueue to initialize.
 */ 
-void pqueue_init ( ProcessQueue * queue){}
-
+void pqueue_init ( ProcessQueue * queue){
+	//Eingabepuffer initialisieren
+	ProcessID data[MAX_NUMBER_OF_PROCESSES];
+	queue->data = data;
+	//Größte des Puffers festlegen
+	queue->size = MAX_NUMBER_OF_PROCESSES;
+	//Head und Tail auf 0 (leere Warteschlange)
+	queue->head = 0;
+	queue->tail = 0,
+}
 /*
 Resets the given ProcessQueue.
 
 Parameters
 queue	The ProcessQueue to reset.
 */
-void pqueue_reset (ProcessQueue *queue){}
+void pqueue_reset (ProcessQueue *queue){
+	queue->head = 0;
+	queue->tail = 0;
+}
 
 /*
 Checks whether there is next a ProcessID.
@@ -340,7 +351,17 @@ queue	The ProcessQueue to check.
 Returns
 True if queue has a next element
 */
-bool pqueue_hasNext (const ProcessQueue *queue){}
+bool pqueue_hasNext (const ProcessQueue *queue){
+	//Wenn queue leer return false
+	if(queue->tail == queue->head){
+		return false;
+	}
+	//sonst true
+	else{
+		return true;
+	}
+	
+}
 
 /*
 Returns the first ProcessID of the given ProcessQueue.
@@ -351,7 +372,9 @@ queue	The specific ProcessQueue.
 Returns
 the first ProcessID.
 */
-ProcessID pqueue_getFirst (const ProcessQueue *queue){}
+ProcessID pqueue_getFirst (const ProcessQueue *queue){
+	return queue->data[queue->tail];
+}
 
 /*
 Drops the first ProcessID of the given ProcessQueue.
@@ -359,7 +382,10 @@ Drops the first ProcessID of the given ProcessQueue.
 Parameters
 queue	The specific ProcessQueue.
 */
-void pqueue_dropFirst (ProcessQueue *queue){}
+void pqueue_dropFirst (ProcessQueue *queue){
+	queue->data[queue->tail] = 0;
+	queue->tail++;
+}
 
 /*
 Appends a ProcessID to the given ProcessQueue.
@@ -368,7 +394,10 @@ Parameters
 queue	The ProcessQueue in which the pid should be appended.
 pid	The ProcessId to append.
 */
-void pqueue_append (ProcessQueue *queue, ProcessID pid){}
+void pqueue_append (ProcessQueue *queue, ProcessID pid){
+	queue->data[queue->head] = pid;
+	queue->head++;
+}
 
 /*
 Removes a ProcessID from the given ProcessQueue.
@@ -377,7 +406,23 @@ Parameters
 queue	The ProcessQueue from which the pid should be removed.
 pid	The ProcessId to remove.
 */
-void pqueue_removePID (ProcessQueue *queue, ProcessID pid){}
+void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
+	uint8_t current = queue->tail;
+	while(current != queue->head){
+		if(queue->data[current] == pid){
+			queue->data[current] = NULL;
+			uint8_t help = current+1;
+			while(help != queue->head){
+				queue->data[current] = queue->data[help];
+				current ++;
+				help++
+			}
+			queue->data[queue->head] = NULL;
+			queue->head--;
+		}
+		
+	}
+}
 
 /*
 Reset the scheduling information for a specific process slot This is necessary when a new process is started to clear out any leftover data from a process that previously occupied that slot
