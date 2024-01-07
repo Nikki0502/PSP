@@ -279,7 +279,9 @@ ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID curr
 }
 
 
-//! Funktionen fuer MLFQ
+/************************************************************************/
+/*                             MLFQ                                     */
+/************************************************************************/
 
 /*
 Maps a process-priority to a priority class.
@@ -290,7 +292,9 @@ prio	The process-priority.
 Returns
 The index of the ProcessQueue/priority class
 */
-uint8_t MLFQ_MapToQueue (Priority prio){}
+uint8_t MLFQ_MapToQueue (Priority prio){
+	return 0;
+}
 
 /*
 Returns the default number of timeslices for a specific ProcessQueue/priority class.
@@ -301,7 +305,9 @@ queueID	The index of the ProcessQueue/the priority class.
 Returns
 Number of timeslices.
 */
-uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID){}
+uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID){
+	return 0;
+}
 	
 /*
 Returns the corresponding ProcessQueue.
@@ -314,7 +320,9 @@ queueID	Index of the queue.
 Returns
 Pointer to the specific ProcessQueue.
 */
-ProcessQueue * MLFQ_getQueue (uint8_t queueID){}
+ProcessQueue * MLFQ_getQueue (uint8_t queueID){
+	return 0;
+}
 
 /* 
  Initializes the given ProcessQueue with a predefined size
@@ -323,13 +331,11 @@ ProcessQueue * MLFQ_getQueue (uint8_t queueID){}
 */ 
 void pqueue_init ( ProcessQueue * queue){
 	//Eingabepuffer initialisieren
-	ProcessID data[MAX_NUMBER_OF_PROCESSES];
-	queue->data = data;
 	//Größte des Puffers festlegen
 	queue->size = MAX_NUMBER_OF_PROCESSES;
 	//Head und Tail auf 0 (leere Warteschlange)
 	queue->head = 0;
-	queue->tail = 0,
+	queue->tail = 0;
 }
 /*
 Resets the given ProcessQueue.
@@ -410,14 +416,14 @@ void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
 	uint8_t current = queue->tail;
 	while(current != queue->head){
 		if(queue->data[current] == pid){
-			queue->data[current] = NULL;
+			queue->data[current] = 0;
 			uint8_t help = current+1;
 			while(help != queue->head){
 				queue->data[current] = queue->data[help];
 				current ++;
-				help++
+				help++;
 			}
-			queue->data[queue->head] = NULL;
+			queue->data[queue->head] = 0;
 			queue->head--;
 		}
 		
@@ -452,7 +458,9 @@ current	The id of the current process.
 Returns
 The next process to be executed determined on the basis of the even strategy.
 */
-ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){}
+ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
+	return 0;
+}
 
 
 

@@ -98,6 +98,7 @@ ISR(TIMER2_COMPA_vect) {
 		case OS_SS_INACTIVE_AGING : currentProc = os_Scheduler_InactiveAging(os_processes,currentProc);break;
 		case OS_SS_ROUND_ROBIN: currentProc = os_Scheduler_RoundRobin(os_processes,currentProc); break;
 		case OS_SS_RUN_TO_COMPLETION: currentProc = os_Scheduler_RunToCompletion(os_processes,currentProc); break;
+		case OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE: currentProc = os_Scheduler_MLFQ(os_processes,currentProc); break;
 	}
 	//falls pruefsumme nicht mehr gleich ist
 	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){

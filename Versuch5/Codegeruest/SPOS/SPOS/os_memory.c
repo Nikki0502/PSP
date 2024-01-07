@@ -409,6 +409,116 @@ MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size){
 }
 
 
+/************************************************************************/
+/*                          Shared Memory                               */
+/************************************************************************/
+
+/*
+Zum Protokoll fuer die Allok.Tabelle
+Es muss nicht erkennbar sein wem der Shared Mem gehört
+Es muss erkennbar sein ob irgend ein Lesezugriff oder mehrere ausgefuehrt werden
+Gleichzeiteges lesen vom mind. 2 Processen
+Dagestellt in 4 bits(0,...,7 und F bis jetzt)
+Idee:
+Ein Shared Mem wird standart als 10 dagestellt
+liesst ein Process wird dies um 1 erhoeht 
+so waere bei 2 lesenden processen 12 an der Stelle(chunkLeader)
+und sollte ein Process schreiben wollen muss dieser
+warten bis der Chunkleader wieder 10 ist um dann diesen 
+auf 9 zu setzen.
+Somit kann man dann klar zwichen Lesen und Schreiben unterscheiden
+Close muss dann wenn der Chunkleader zb 13 ist(3 Processe lesen) 
+diesen um 1 wieder veringern und bei 9(max. 1er am schreiben) diesen wieder auf 10 setzen 
+=> max 4 Processe gleichzeitig lesen, 1 gleichzeitig schreiben und erkennbar ob Processe lesen oder schreiben 
+benutzen 9,10,11,12,13,14
+*/
+
+/*
+Allocates a chunk of memory on the medium given by the driver and reserves it as shared memory.
+
+Parameters
+heap	The heap to be used.
+size	The amount of memory to be allocated in Bytes. Must be able to handle a single byte and values greater than 255.
+
+Returns
+A pointer to the first Byte of the allocated chunk.
+0 if allocation fails (0 is never a valid address).
+*/
+MemAddr os_sh_malloc (Heap *heap, size_t size){
+	return 0;
+}
+
+/*
+Frees a chunk of shared allocated memory on the given heap
+
+Parameters
+heap	The heap to be used.
+addr	An address inside of the chunk (not necessarily the start).
+*/	
+void os_sh_free (Heap *heap, MemAddr *addr){}
+	
+/*
+Opens a chunk of shared memory to prepare a reading process
+
+Parameters
+heap	The heap to be used
+ptr	Pointer to an address of the chunk
+
+Returns
+MemAddr is the dereferenced argument ptr after opening the chunk
+*/	
+MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
+	return 0;
+}
+	
+/*
+Opens a chunk of shared memory to prepare a writing process
+
+Parameters
+heap	The heap to be used
+ptr	Pointer to an address of the chunk
+
+Returns
+MemAddr is the dereferenced argument ptr after opening the chunk
+*/		
+MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
+	return 0;
+}
+	
+/*
+Closes a chunk of shared memory to end an arbitrary access
+
+Parameters
+heap	The heap to be used
+addr	Address of the chunk
+*/		
+void os_sh_close (const Heap *heap, MemAddr addr){}
+	
+/*
+Function used to write onto shared memory
+
+Parameters
+heap	The heap to be used
+ptr	Pointer to an address of the chunk to write to
+offset	An offset that refers to the beginning of the chunk
+dataSrc	Source of the data (this is always on internal SRAM)
+length	Specifies how many bytes of data shall be written
+*/		
+void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){}
+	
+/*
+Function used to read from shared memory
+
+Parameters
+heap	The heap to be used
+ptr	Pointer to an address of the chunk to read from
+offset	An offset that refers to the beginning of the chunk
+dataDest	Destination where the data shall be copied to (this is always on internal SRAM)
+length	Specifies how many bytes of data shall be read
+*/		
+void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){}
+
+
 
 	
 

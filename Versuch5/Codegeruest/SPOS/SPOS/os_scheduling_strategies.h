@@ -51,7 +51,7 @@ typedef struct{
 	size_t size;
 	uint8_t head;
 	uint8_t tail;
-	}ProcessQueue;
+}ProcessQueue;
 
 //! Funktionen fuer Benutzung der Warteschlange
 uint8_t MLFQ_MapToQueue (Priority prio);

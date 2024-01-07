@@ -61,4 +61,13 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid);
 void moveChunk (Heap *heap, MemAddr oldChunk, size_t oldSize, MemAddr newChunk, size_t newSize);
 MemAddr os_realloc (Heap *heap, MemAddr addr, uint16_t size);
 
+// Shared Mem
+MemAddr os_sh_malloc (Heap *heap, size_t size);
+void os_sh_free (Heap *heap, MemAddr *addr);
+MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr);
+MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr);
+void os_sh_close (const Heap *heap, MemAddr addr);
+void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length);
+void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length);
+
 #endif /* OS_MEMORY_H_ */
