@@ -320,7 +320,7 @@ queueID	Index of the queue.
 Returns
 Pointer to the specific ProcessQueue.
 */
-ProcessQueue * MLFQ_getQueue (uint8_t queueID){
+ProcessQueue* MLFQ_getQueue (uint8_t queueID){
 	return 0;
 }
 
@@ -329,7 +329,7 @@ ProcessQueue * MLFQ_getQueue (uint8_t queueID){
  Parameters
  queue The ProcessQueue to initialize.
 */ 
-void pqueue_init ( ProcessQueue * queue){
+void pqueue_init ( ProcessQueue *queue){
 	//Eingabepuffer initialisieren
 	//Größte des Puffers festlegen
 	queue->size = MAX_NUMBER_OF_PROCESSES;
