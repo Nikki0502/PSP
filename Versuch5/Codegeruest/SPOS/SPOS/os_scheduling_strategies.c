@@ -41,6 +41,14 @@ void os_resetSchedulingInformation(SchedulingStrategy strategy) {
 			schedulingInfo.age[i]=0;
 		}
 	}
+	if (strategy == OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE){
+		for (int i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
+			schedulingInfo.timeslices[i]=0;
+		}
+		for (int i =0; i< 4; i++){
+			pqueue_reset(&schedulingInfo.queues[i]);
+		}
+	}
 }
 
 /*!
@@ -51,8 +59,10 @@ void os_resetSchedulingInformation(SchedulingStrategy strategy) {
  *  \param id  The process slot to erase state for
  */
 void os_resetProcessSchedulingInformation(ProcessID id) {
-    // This is a presence task
 	schedulingInfo.age[id]=0;
+	schedulingInfo.timeslices[id]= MLFQ_getDefaultTimeslice(MLFQ_MapToQueue(os_getProcessSlot(id)->priority));
+	MLFQ_removePID(id);
+	pqueue_append(MLFQ_getQueue(MLFQ_MapToQueue(os_getProcessSlot(id)->priority)),id);
 }
 
 /*!
@@ -293,7 +303,11 @@ Returns
 The index of the ProcessQueue/priority class
 */
 uint8_t MLFQ_MapToQueue (Priority prio){
-	return 0;
+	uint8_t msb = (prio & 0b11000000)>>6;
+	if(msb==3){return 0;}
+	else if(msb==2){return 1;}
+	else if(msb==1){return 2;}
+	else {return 3;}
 }
 
 /*
@@ -306,7 +320,7 @@ Returns
 Number of timeslices.
 */
 uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID){
-	return 0;
+	return 2^queueID;
 }
 	
 /*
@@ -321,7 +335,8 @@ Returns
 Pointer to the specific ProcessQueue.
 */
 ProcessQueue* MLFQ_getQueue (uint8_t queueID){
-	return 0;
+	ProcessQueue *queue = &schedulingInfo.queues[queueID];
+	return queue ;
 }
 
 /* 
@@ -331,6 +346,7 @@ ProcessQueue* MLFQ_getQueue (uint8_t queueID){
 */ 
 void pqueue_init ( ProcessQueue *queue){
 	//Eingabepuffer initialisieren
+	
 	//Größte des Puffers festlegen
 	queue->size = MAX_NUMBER_OF_PROCESSES;
 	//Head und Tail auf 0 (leere Warteschlange)
@@ -379,7 +395,10 @@ Returns
 the first ProcessID.
 */
 ProcessID pqueue_getFirst (const ProcessQueue *queue){
-	return queue->data[queue->tail];
+	if(pqueue_hasNext(queue)){
+		return queue->data[queue->tail%queue->size];
+	}	
+	return 0;
 }
 
 /*
@@ -389,8 +408,10 @@ Parameters
 queue	The specific ProcessQueue.
 */
 void pqueue_dropFirst (ProcessQueue *queue){
-	queue->data[queue->tail] = 0;
+	queue->data[queue->tail%queue->size] = 0;
 	queue->tail++;
+	
+	
 }
 
 /*
@@ -401,7 +422,7 @@ queue	The ProcessQueue in which the pid should be appended.
 pid	The ProcessId to append.
 */
 void pqueue_append (ProcessQueue *queue, ProcessID pid){
-	queue->data[queue->head] = pid;
+	queue->data[queue->head%queue->size] = pid;
 	queue->head++;
 }
 
@@ -413,17 +434,17 @@ queue	The ProcessQueue from which the pid should be removed.
 pid	The ProcessId to remove.
 */
 void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
-	uint8_t current = queue->tail;
-	while(current != queue->head){
+	uint8_t current = queue->tail%queue->size;
+	while(current != queue->head%queue->size){
 		if(queue->data[current] == pid){
 			queue->data[current] = 0;
-			uint8_t help = current+1;
-			while(help != queue->head){
-				queue->data[current] = queue->data[help];
+			uint8_t help = current+1%queue->size;
+			while(help%queue->size != queue->head%queue->size){
+				queue->data[current%queue->size] = queue->data[help%queue->size];
 				current ++;
 				help++;
 			}
-			queue->data[queue->head] = 0;
+			queue->data[queue->head%queue->size] = 0;
 			queue->head--;
 		}
 		
@@ -431,12 +452,16 @@ void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
 }
 
 /*
-Reset the scheduling information for a specific process slot This is necessary when a new process is started to clear out any leftover data from a process that previously occupied that slot
 
-Parameters
-id	The process slot to erase state for
+
+Initializes all ProcessQueues for the MLFQ.
+
 */
-void os_initSchedulingInformation (){}
+void os_initSchedulingInformation (){
+	for (uint8_t i = 0; i<4;i++){
+		pqueue_init(&schedulingInfo.queues[i]);
+	}
+}
 
 /*
 Function that removes the given ProcessID from the ProcessQueues.
@@ -444,7 +469,11 @@ Function that removes the given ProcessID from the ProcessQueues.
 Parameters
 pid	The ProcessId to remove.
 */
-void MLFQ_removePID (ProcessID pid){}
+void MLFQ_removePID (ProcessID pid){
+	for(uint8_t i = 0; i<4; i++ ){
+		pqueue_removePID(&schedulingInfo.queues[i], pid);
+	}
+}
 
 /*
 This function implements the multilevel-feedback-queue with 4 priority-classes. 
@@ -459,7 +488,10 @@ Returns
 The next process to be executed determined on the basis of the even strategy.
 */
 ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
-	return 0;
+	for(uint8_t i= 0; i< MAX_NUMBER_OF_PROCESSES){
+		
+		
+	}	
 }
 
 
