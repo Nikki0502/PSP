@@ -15,6 +15,7 @@
 
 
 
+
 /*
  * Nible Management
  */
@@ -200,6 +201,10 @@ void os_free(Heap* heap, MemAddr addr){
 	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
 	//versucht speicher von anderen Process frei zugeben
 	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
+	if(ownerOfChunk>0x7){
+		os_error("os_free:not a shared mem");
+		return ;
+	}
 	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
 		os_error("os_free:not the right MemChunk");
 	}
@@ -445,7 +450,50 @@ A pointer to the first Byte of the allocated chunk.
 0 if allocation fails (0 is never a valid address).
 */
 MemAddr os_sh_malloc (Heap *heap, size_t size){
-	return 0;
+	os_enterCriticalSection();
+
+	/* Je nach Schedulingstrategie wird die erste Adresse des zu 
+	 verwendenen freien Speicherblocks zurückgegeben */
+	MemAddr firstChunkAddrUser=0;
+	AllocStrategy current =os_getAllocationStrategy(heap);
+	switch (current){
+		case OS_MEM_FIRST: firstChunkAddrUser = os_Memory_FirstFit(heap,size,os_getUseStart(heap)); break;
+		case OS_MEM_WORST: firstChunkAddrUser = os_Memory_WorstFit(heap,size); break;
+		case OS_MEM_BEST: firstChunkAddrUser = os_Memory_BestFit(heap,size);   break;
+		case OS_MEM_NEXT: firstChunkAddrUser = os_Memory_NextFit(heap,size);   break;
+	}
+	// next alloc leader zu weisen wenn Next Fit
+	if(current == OS_MEM_NEXT){
+		if(firstChunkAddrUser!=0){
+			heap->lastAllocLeader=firstChunkAddrUser+size;
+		}
+		else{
+			heap->lastAllocLeader=firstChunkAddrUser;
+		}
+	}
+	//falls kein Speicherblock gefunden werden konnte
+	// koennte zu problemem fuehren bei extHEAP
+	if(firstChunkAddrUser == 0){
+		//Start von letzten allozierten Bereich
+		os_leaveCriticalSection();
+		return 0;
+	}
+	// Optimierungs Frame
+	if(firstChunkAddrUser< heap->allocFrameStart){
+		heap->allocFrameStart = firstChunkAddrUser;
+	}
+	if(firstChunkAddrUser+size> heap->allocFrameEnd){
+		heap->allocFrameEnd = firstChunkAddrUser+size;
+	}
+	//In der Map die entsprechenden Adressen des Speicherblocks für den Prozess reservieren
+	// Map als Schared Mem kennzeichnen
+	os_setMapAddrValue(heap,firstChunkAddrUser,0xA);
+	for (uint16_t i =1; i<size;i++){
+		os_setMapAddrValue(heap,(firstChunkAddrUser + i),0xF);
+	}
+	
+	os_leaveCriticalSection();
+	return firstChunkAddrUser;
 }
 
 /*
@@ -455,7 +503,46 @@ Parameters
 heap	The heap to be used.
 addr	An address inside of the chunk (not necessarily the start).
 */	
-void os_sh_free (Heap *heap, MemAddr *addr){}
+void os_sh_free (Heap *heap, MemAddr *addr){
+	os_enterCriticalSection();
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,*addr);
+	uint16_t sizeOfChunk = os_getChunkSize(heap,*addr);
+	//versucht speicher von anderen Process frei zugeben
+	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
+	if(ownerOfChunk<=0x7){
+		os_error("os_sh_free:not a shared mem");
+		return ;
+	}
+	if(ownerOfChunk!= 0x10){
+		os_yield();
+	}
+	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
+		os_error("os_sh_free:not the right MemChunk");
+	}
+	else{
+		for (uint16_t i =0; i < sizeOfChunk ; i++){
+			os_setMapAddrValue(heap,(startOfChunk + i),0);
+		}
+	}
+	// Optimierungs Frame
+	if(startOfChunk == heap->allocFrameStart){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameStart = i;
+				break;
+			}
+		}
+	}
+	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameEnd = i;
+				break;
+			}
+		}
+	}
+	os_leaveCriticalSection();
+}
 	
 /*
 Opens a chunk of shared memory to prepare a reading process

@@ -90,7 +90,6 @@ ISR(TIMER2_COMPA_vect) {
 	//Speichern der Prüfsumme auf den Schedulerstack
 	os_processes[currentProc].checksum = os_getStackChecksum(currentProc);
 	
-	ProcessID alterProc = currentProc;
 	//6.Auswahl des naechsten fortzusetzenden Prozesses durch Aufruf der aktuell verwendeten Schedulingstrategie
 	switch(os_getSchedulingStrategy()){
 		case OS_SS_RANDOM : currentProc = os_Scheduler_Random(os_processes, currentProc);break;
@@ -103,10 +102,6 @@ ISR(TIMER2_COMPA_vect) {
 	//falls pruefsumme nicht mehr gleich ist
 	if (os_processes[currentProc].checksum !=os_getStackChecksum(currentProc)){
 		os_error("Pruefsumme falchs");
-	}
-	//Setzten des blocked Prozesses wieder auf ready falls es einen gibt
-	if(os_processes[alterProc].state == OS_PS_BLOCKED){
-		os_processes[alterProc].state = OS_PS_READY;
 	}
 
 	//7.Setzen des Prozesszustandes des fortzusetzenden Prozesses auf OS_PS_RUNNING

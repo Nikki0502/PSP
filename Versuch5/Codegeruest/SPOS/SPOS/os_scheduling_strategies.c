@@ -14,6 +14,7 @@ The file contains five strategies:
 #include "os_scheduling_strategies.h"
 #include "os_core.h"
 #include "defines.h"
+#include "os_scheduler.h"
 
 #include <stdlib.h>
 
@@ -77,6 +78,7 @@ void os_resetProcessSchedulingInformation(ProcessID id) {
  */
 ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 	uint16_t processInReady= 0;
+	ProcessID altCurrent = current;
 	// um alle prozesse die ready sind heraus zu finden
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
 		if(processes[i].state== OS_PS_READY){
@@ -88,6 +90,11 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 		if(processes[current].state != OS_PS_BLOCKED){
 			current =0;
 	    }
+		else{
+			// current ist blocked aber gibt keinen Ready process
+			os_getProcessSlot(current)->priority = OS_PS_READY;
+			return current;
+		}
 	}
 	else{
 		while(true){
@@ -103,6 +110,9 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
 			}
 		}
 	}
+	if(processes[altCurrent].state == OS_PS_BLOCKED){
+		os_getProcessSlot(altCurrent)->state = OS_PS_READY;
+	}
     return current;
 }
 
@@ -115,6 +125,7 @@ ProcessID os_Scheduler_Even(const Process processes[], ProcessID current) {
  *  \return The next process to be executed determined on the basis of the random strategy.
  */
 ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
+	ProcessID altCurrent = current;
 	int randnumber = rand();
 	uint16_t processInReady= 0;
 	// um alle prozesse die ready sind heraus zu finden
@@ -127,6 +138,11 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
 	if (processInReady == 0){
 		if(processes[current].state != OS_PS_BLOCKED){
 			current =0;
+		}
+		else{
+			// current ist blocked aber gibt keinen Ready process
+			os_getProcessSlot(current)->priority = OS_PS_READY;
+			return current;
 		}
 	}
 	else{
@@ -141,7 +157,9 @@ ProcessID os_Scheduler_Random(const Process processes[], ProcessID current) {
 			}
 		}	
 	}
-	
+	if(processes[altCurrent].state == OS_PS_BLOCKED){
+		os_getProcessSlot(altCurrent)->state = OS_PS_READY;
+	}
     return current;
 }
 
@@ -170,6 +188,7 @@ ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) 
 			current = 0;
 			return current;
 		}
+		// hier nicht notwwendig wegen even unten
 	}
 	
 	schedulingInfo.timeslice --;
@@ -197,6 +216,7 @@ ProcessID os_Scheduler_RoundRobin(const Process processes[], ProcessID current) 
  *  \return The next process to be executed, determined based on the inactive-aging strategy.
  */
 ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID current) {
+	ProcessID altCurrent = current;
 	uint16_t processInReady= 0;
 	// um alle prozesse die ready sind heraus zu finden
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
@@ -211,6 +231,8 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
 			return current;
 		}
 		else{
+			// current ist blocked aber gibt keinen Ready process
+			os_getProcessSlot(current)->priority = OS_PS_READY;
 			schedulingInfo.age[current]=0;
 			return current;
 		}
@@ -243,14 +265,9 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
 			}
 		}
 	}
-	/*
-	for (int i =1; i< MAX_NUMBER_OF_PROCESSES;i++){
-		schedulingInfo.age[i] += processes[i].priority;
-		if(i==oldest){
-			schedulingInfo.age[i]=0;
-		}
+	if(processes[altCurrent].state == OS_PS_BLOCKED){
+		os_getProcessSlot(altCurrent)->state = OS_PS_READY;
 	}
-	*/
 	schedulingInfo.age[oldest]=0;
     return oldest;
 }
@@ -265,6 +282,7 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
  *  \return The next process to be executed, determined based on the run-to-completion strategy.
  */
 ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID current) {
+	ProcessID altCurrent = current;
     // This is a presence task
 	uint16_t processInReady= 0;
 	// um alle prozesse die ready sind heraus zu finden
@@ -279,11 +297,18 @@ ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID curr
 			current = 0;
 			return current;
 		}
-		return current;
+		else{
+			// current ist blocked aber gibt keinen Ready process
+			os_getProcessSlot(current)->priority = OS_PS_READY;
+			return current;
+		}
 	}
 	
 	if(processes[current].state == OS_PS_UNUSED){
 		current = os_Scheduler_Even(processes,current);
+	}
+	if(processes[altCurrent].state == OS_PS_BLOCKED){
+		os_getProcessSlot(altCurrent)->state = OS_PS_READY;
 	}
     return current;
 }
@@ -304,9 +329,11 @@ The index of the ProcessQueue/priority class
 */
 uint8_t MLFQ_MapToQueue (Priority prio){
 	uint8_t msb = (prio & 0b11000000)>>6;
+	// hoechste prio
 	if(msb==3){return 0;}
 	else if(msb==2){return 1;}
 	else if(msb==1){return 2;}
+	// niedrigste prio
 	else {return 3;}
 }
 
@@ -475,6 +502,19 @@ void MLFQ_removePID (ProcessID pid){
 	}
 }
 
+bool MLFQ_hasPID(ProcessID pid, uint8_t queueID){
+	uint8_t currentQueue = queueID;
+	while(currentQueue<4){
+		for (uint8_t i = MLFQ_getQueue(currentQueue)->tail% MLFQ_getQueue(currentQueue)->size ; i< MLFQ_getQueue(currentQueue)->head% MLFQ_getQueue(currentQueue)->size;i++){
+			if(MLFQ_getQueue(currentQueue)->data[i]==pid){
+				return true;
+			} 
+		}
+		currentQueue +=1;
+	}
+	return false;
+}
+
 /*
 This function implements the multilevel-feedback-queue with 4 priority-classes. 
 Every process is inserted into a queue of a priority-class and gets a default amount of timeslices which are class dependent.
@@ -488,10 +528,64 @@ Returns
 The next process to be executed determined on the basis of the even strategy.
 */
 ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
-	for(uint8_t i= 0; i< MAX_NUMBER_OF_PROCESSES){
-		
-		
-	}	
+	uint8_t chosenQueueId = 0;
+	for (uint8_t i = 0 ; i < MAX_NUMBER_OF_PROCESSES; i++){
+		// falls nicht schon in einer queue
+		if(!MLFQ_hasPID(current,MLFQ_MapToQueue(processes[i].priority))){
+			pqueue_append(MLFQ_getQueue(MLFQ_MapToQueue(processes[i].priority)),current);
+			schedulingInfo.timeslices[i] = MLFQ_getDefaultTimeslice(MLFQ_MapToQueue(processes[i].priority));
+		}
+	}
+	ProcessID choosenPID = 0;
+	// scheduling
+	// Waehlt den ersten Proc in der ersten Queue aus der Ready ist
+	for (uint8_t i = 0;i<4;i++){
+		if(pqueue_hasNext(MLFQ_getQueue(i))){
+			for(uint8_t j = MLFQ_getQueue(i)->tail%MLFQ_getQueue(i)->size;j< MLFQ_getQueue(i)->head%MLFQ_getQueue(i)->size;j++){
+				ProcessID currProc = MLFQ_getQueue(i)->data[j];
+				if(processes[currProc].state == OS_PS_READY){
+					choosenPID = MLFQ_getQueue(i)->data[j];
+					break;
+				}
+			}
+		}
+		// wenn einer gefunden wurde zum breaken
+		if(choosenPID!=0){
+			break;
+		}
+	}
+	// falls kein proc ready ausser blocked
+	if(choosenPID==0 && processes[current].state==OS_PS_BLOCKED){
+		choosenPID = current;
+	}
+	// blokced ready setzen
+	if(processes[current].state==OS_PS_BLOCKED){
+		os_getProcessSlot(current)->priority = OS_PS_READY;
+	}
+	// idle,kein anderer gefunden
+	if(choosenPID==0){
+		return 0;
+	}
+	// in welcher queue sich der chosenProc befindet
+	for(uint8_t i = 0; i<4;i++){
+		if(MLFQ_hasPID(choosenPID,i)){
+			chosenQueueId = i;
+		}
+	}
+	// timeslice dekrementieren
+	schedulingInfo.timeslices[choosenPID] -=1;
+	// proc eine queue runtersetzen
+	if(schedulingInfo.timeslices[choosenPID]==0){
+		// remove old
+		MLFQ_removePID(choosenPID);
+		// add to new
+		pqueue_append(MLFQ_getQueue(chosenQueueId+1),choosenPID);
+		// timeslices anpassen anhand der neuen queue
+		schedulingInfo.timeslices[choosenPID]= MLFQ_getDefaultTimeslice(chosenQueueId+1);
+	}
+	
+	return choosenPID;
+	
 }
 
 
