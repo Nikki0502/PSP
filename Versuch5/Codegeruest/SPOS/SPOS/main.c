@@ -4,6 +4,7 @@
 #include "os_scheduler.h"
 #include "util.h"
 #include "os_memheap_drivers.h" 
+#include "os_scheduling_strategies.h"
 
 #include <avr/pgmspace.h>
 
@@ -28,6 +29,7 @@ int main(void) {
 	}
 	//heap init 
 	os_initHeaps();
+	os_initSchedulingInformation();
 
     // Start the operating system
     os_startScheduler();
