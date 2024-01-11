@@ -555,7 +555,16 @@ Returns
 MemAddr is the dereferenced argument ptr after opening the chunk
 */	
 MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
-	return 0;
+	os_enterCriticalSection();
+	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
+	//gebe Rechenzeit ab, falls auf Shared Memory geschrieben wird oder bereits 4 Prozesse lesen
+	if(os_getMapEntry(heap,ptrAddr) == 0x9 || os_getMapEntry(heap,ptrAddr) == 0xE ){
+		os_yield();
+		return ptrAddr ;
+	}
+    os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
+	os_leaveCriticalSection();
+	return ptrAddr;
 }
 	
 /*
@@ -569,7 +578,15 @@ Returns
 MemAddr is the dereferenced argument ptr after opening the chunk
 */		
 MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
-	return 0;
+	os_enterCriticalSection();
+	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
+	if(os_getMapEntry(heap,ptrAddr) != 0xA){
+		os_yield();
+		return ptrAddr ;
+	}
+	os_setMapAddrValue(heap,ptrAddr,0x9);
+	os_leaveCriticalSection();
+	return ptrAddr;
 }
 	
 /*
@@ -579,7 +596,18 @@ Parameters
 heap	The heap to be used
 addr	Address of the chunk
 */		
-void os_sh_close (const Heap *heap, MemAddr addr){}
+void os_sh_close (const Heap *heap, MemAddr addr){
+	os_enterCriticalSection();
+	if (os_getMapEntry(heap,addr) > 10)
+	{
+		os_setMapAddrValue(heap,addr,os_getMapEntry(heap,addr)-1);
+	}
+	if (os_getMapEntry(heap,addr) == 9)
+	{
+		os_setMapAddrValue(heap,addr,0xA);
+	}
+	os_leaveCriticalSection();
+}
 	
 /*
 Function used to write onto shared memory
@@ -591,7 +619,22 @@ offset	An offset that refers to the beginning of the chunk
 dataSrc	Source of the data (this is always on internal SRAM)
 length	Specifies how many bytes of data shall be written
 */		
-void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){}
+void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){
+	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9 || os_getFirstByteOfChunk(heap,*ptr) != os_getFirstByteOfChunk(heap,*ptr+offset+length)){
+		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
+		return;
+	}
+	os_sh_writeOpen(heap,ptr);
+	MemAddr startCopy = os_getFirstByteOfChunk(heap,*ptr) + offset;
+	MemValue zwischen;
+	MemAddr data = (MemAddr) dataSrc;
+	for(MemAddr i = data; i< data + length; i++){
+		zwischen = heap->driver->read(i);
+		heap->driver->write(startCopy,zwischen);
+		startCopy++;
+	}
+	os_sh_close(heap,*ptr);
+}
 	
 /*
 Function used to read from shared memory
@@ -603,7 +646,24 @@ offset	An offset that refers to the beginning of the chunk
 dataDest	Destination where the data shall be copied to (this is always on internal SRAM)
 length	Specifies how many bytes of data shall be read
 */		
-void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){}
+void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){
+	// Daten des Shared Mem an dataDest kopieren
+	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9 || os_getFirstByteOfChunk(heap,*ptr) != os_getFirstByteOfChunk(heap,*ptr+offset+length)){
+		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
+		return;
+	}
+	os_sh_readOpen(heap,ptr);
+	MemAddr start = os_getFirstByteOfChunk(heap,*ptr) + offset;
+	MemValue zwischen;
+	MemAddr data = (MemAddr)dataDest;
+	for(MemAddr i = start; i< start + length; i++){
+		zwischen = heap->driver->read(i);
+		heap->driver->write(data,zwischen);
+		dataDest++;
+	}
+	os_sh_close(heap,*ptr);
+}
+
 
 
 
