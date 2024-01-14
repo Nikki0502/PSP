@@ -1,27 +1,35 @@
 //-------------------------------------------------
-//          TestTask: Realloc
+//          TestTask: Process Queues
 //-------------------------------------------------
 
-#include "defines.h"
 #include "lcd.h"
 #include "os_core.h"
 #include "os_input.h"
-#include "os_memory.h"
+#include "os_process.h"
 #include "os_scheduler.h"
-#include "util.h"
+#include "os_scheduling_strategies.h"
+#include "string.h"
 
-#include <avr/interrupt.h>
 #include <avr/pgmspace.h>
-#include <stdlib.h>
 #include <util/atomic.h>
 
-#if VERSUCH < 4
+#if VERSUCH < 5
 #error "Please fix the VERSUCH-define"
 #endif
 
+
 //---- Adjust here what to test -------------------
-#define TEST_INTERNAL 1
-#define TEST_EXTERNAL 1
+#define PHASE_1_INIT 1
+#define PHASE_2_SIMPLE 1
+#define PHASE_3_CONSISTENCY 1
+#define PHASE_4_REMOVE 1
+#define PHASE_5_MLFQ 1
+
+// Draw the process queues after each step
+// This is useful for debugging, but the task will take
+// longer to complete due to the added delay (which is necessary
+// to actually see the output
+#define DRAW_PROCESS_QUEUES 1
 //-------------------------------------------------
 
 #ifndef WRITE
@@ -34,6 +42,9 @@
             WRITE("  TEST PASSED   "); \
         }                              \
     } while (0)
+
+// Keep queue on screen with failure message
+// Note: this restricts messages to 16 chars
 #define TEST_FAILED(reason)  \
     do {                     \
         ATOMIC {             \
@@ -42,615 +53,445 @@
             WRITE(reason);   \
         }                    \
     } while (0)
+
+
 #ifndef CONFIRM_REQUIRED
 #define CONFIRM_REQUIRED 1
 #endif
 
-// Error printout
-#define TEST_FAILED_HEAP_AND_HALT(reason, heap)   \
-    do ATOMIC {                                   \
-            if ((heap) == intHeap) {              \
-                TEST_FAILED("intHeap:  " reason); \
-            } else {                              \
-                TEST_FAILED("extHeap:  " reason); \
-            }                                     \
-            HALT;                                 \
-        }                                         \
-    while (0)
+// turn off process queue drawing by defining SHOW_QUEUE as empty
+#if !DRAW_PROCESS_QUEUES
+#define SHOW_QUEUE
+#endif
 
-// Calculates the minimum of a and b
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
+//! call the queue display method with the address of a locally defined ProcessQueue queue, and a delay depending on queue_display_delay_factor
+// only define this macro if it has not been already to allow overriding by external tools
+#ifndef SHOW_QUEUE
+#define SHOW_QUEUE test_displayProcessQueue(&queue, queue_display_delay_factor *DEFAULT_OUTPUT_DELAY)
+#endif
 
-// Check if this heap gets tested
-#define IS_TESTING(heap) (((heap) == intHeap && TEST_INTERNAL) || ((heap) == extHeap && TEST_EXTERNAL))
+//! Show a failure message with the option to switch to a queue view
+#define TEST_FAILED_QUEUE_VIEWER(message) \
+    do {                                  \
+        TEST_FAILED(message);             \
+        os_waitForInput();                \
+        os_waitForNoInput();              \
+        test_drawProcessQueue(&queue);    \
+        os_waitForInput();                \
+        os_waitForNoInput();              \
+    } while (1)
 
-// Flag indicating if the internal realloc error checks are complete
-volatile bool errorI = false;
-// Flag indicating if the external realloc error checks are complete
-volatile bool errorE = false;
-// Flag indicating if the external realloc check discovered failures
-bool failI = false;
-// Flag indicating if the internal realloc check discovered failures
-bool failE = false;
 
-// Memory chunks for foreign reallocation checks (one process allocates, the other tries to reallocate)
-volatile MemAddr addrI = 0;
-volatile MemAddr addrE = 0;
+// Simple macro to define an array (using compound initializers) in-place
+// This macro uses variadic arguments, so it can take any number of arguments
+// __VA_ARGS__ just resembles exactly the input arguments as a text string with commas
+// so all input values will just be pasted into an array initializer
+#define Q(...) ((ProcessID[]){__VA_ARGS__})
 
-#define FOREIGN_ALLOC_SIZE 42
-
-// Flag indicating an error
-static bool errflag = false;
-
-static int stderrWrapper(const char c, FILE *stream) {
-    errflag = true;
-    putchar(c);
-    return 0;
-}
-static FILE *wrappedStderr = &(FILE)FDEV_SETUP_STREAM(stderrWrapper, NULL, _FDEV_SETUP_WRITE);
-
-#define EXPECT_ERROR(label)                            \
-    do {                                               \
-        lcd_clear();                                   \
-        lcd_writeProgString(PSTR("Please confirm  ")); \
-        lcd_writeProgString(PSTR(label ":"));          \
-        delayMs(DEFAULT_OUTPUT_DELAY * 16);            \
-        errflag = false;                               \
-    } while (0)
-
-#define EXPECT_NO_ERROR  \
-    do {                 \
-        errflag = false; \
-    } while (0)
-
-#define ASSERT_ERROR(heap, label)                                    \
-    do {                                                             \
-        if (!errflag) {                                              \
-            TEST_FAILED_HEAP_AND_HALT("No error (" label ")", heap); \
-        }                                                            \
-    } while (0)
-
-#define ASSERT_NO_ERROR(heap)                                    \
-    do {                                                         \
-        if (errflag) {                                           \
-            TEST_FAILED_HEAP_AND_HALT("Unexpected error", heap); \
-        }                                                        \
+// Test if the queue resembles pattern after removing pid
+// expects a local ProcessQueue queue
+#define assert_pattern_after_remove(pid, pattern, message)                                    \
+    do {                                                                                      \
+        pqueue_removePID(&queue, pid);                                                        \
+        SHOW_QUEUE;                                                                           \
+        if (!test_processQueueMatches(&queue, pattern, sizeof(pattern) / sizeof(pattern[0]))) \
+            TEST_FAILED_QUEUE_VIEWER("Remove error: " message);                               \
     } while (0)
 
 
-typedef struct {
-    MemAddr head; // First address of that chunk
-    size_t size;  // Size of chunk
-    bool dummy;   // 1 if this chunk is a dummy
-} Chunk;
+//! draws a visual representation of the queue array, head and tail
+static void test_drawProcessQueue(const ProcessQueue *queue) {
+    // calculate the length of the queue defined by the students
+    // using sizeof() should work here since data is required to be
+    // an array inside of the struct with a fixed size
+    uint8_t array_length = sizeof(queue->data) / sizeof(queue->data[0]);
+    lcd_clear();
+    lcd_writeChar('[');
+    lcd_goto(1, array_length + 2);
+    lcd_writeChar(']');
 
-/*!
- * Returns the mapEntry of the use-address ptr
- * \param  *heap Heap on which the map is to be checked
- * \param   ptr  Use-address whose map-entry is requested
- * \return       Entry for that position (between 0x0 and 0xF)
- */
-uint8_t progs_getMapEntry(Heap *heap, MemAddr ptr) {
-    MemAddr relativeAddress = ptr - os_getUseStart(heap);
-    // If nibble is 1, the high nibble is responsible
-    uint8_t nibble = relativeAddress % 2 == 0 ? 1 : 0;
 
-    MemAddr mapEntryAddress = relativeAddress / 2;
-
-    MemValue fullEntry = heap->driver->read(os_getMapStart(heap) + mapEntryAddress);
-
-    if (nibble == 1) {
-        return fullEntry >> 4;
+    // tail is marked with a ^, head with . . LCD_CC_IXI is a custom char
+    // that displays both a . and a ^ in the same cell
+    if (queue->head == queue->tail) {
+        lcd_goto(2, queue->tail + 2);
+        lcd_writeChar(LCD_CC_IXI);
     } else {
-        return fullEntry & 0x0F;
+        lcd_goto(2, queue->tail + 2);
+        lcd_writeChar('.');
+        lcd_goto(2, queue->head + 2);
+        lcd_writeChar('^');
+    }
+
+    // go through the queue and print the elements
+    // there are valid queue implementations where the whole queue
+    // can be filled with user data, so head == tail can mean either a completely
+    // full or completely empty queue. Therefore we have to do a case distinction
+    // with pqueue_hasNext
+    if (pqueue_hasNext(queue)) {
+        uint8_t i = queue->tail;
+        lcd_goto(1, queue->tail + 2);
+        do {
+            // for invalid data inside the queue we write an X
+            if (queue->data[i] < MAX_NUMBER_OF_PROCESSES) {
+                lcd_writeDec(queue->data[i]);
+            } else {
+                lcd_writeChar('X');
+            }
+            i++;
+            // wrap-around both counter and lcd pos
+            if (i == array_length) {
+                i = 0;
+                lcd_goto(1, 2);
+            }
+        } while (i != queue->head);
     }
 }
 
-/*!
- * Returns the chunk-size of a chunk that starts at ptr. Only works for chunks
- * that were allocated as private memory by one of the processes.
- * \param  *heap Heap where the chunk is
- * \param   ptr  Address of the very first byte of that chunk
- * \return       Length of chunk in bytes
+/*! display the queue using \p pqueue_draw for the given delay \p delay.
+ * Waits for all buttons to be released before returning, so the program can be frozen by holding down a button
+ * to look at the queue
  */
-uint16_t progs_getChunkSize(Heap *heap, MemAddr ptr) {
-    uint16_t size;
-    MemValue owner;
-    owner = progs_getMapEntry(heap, ptr);
-    if (owner == 0 || owner >= MAX_NUMBER_OF_PROCESSES) {
-        return 0;
-    }
-    for (size = 1; progs_getMapEntry(heap, ptr + size) == 0xF; size++) continue;
-    return size;
+#if PHASE_1_INIT || PHASE_2_SIMPLE || PHASE_3_CONSISTENCY || PHASE_4_REMOVE
+static void test_displayProcessQueue(const ProcessQueue *queue, uint16_t delay) {
+    test_drawProcessQueue(queue);
+    delayMs(delay);
+    // allow students to pause execution to look
+    // at current queue state
+    os_waitForNoInput();
 }
+#endif
 
-/*!
- * Writes a pattern to a certain chunk
- * \param  *heap   Heap on which this action is to be performed
- * \param  *c      Chunk to which the pattern is to be written
- * \param   pat    Pattern that is written. This byte gets repeatedly written
- *                 to the chunk until the whole chunk is filled with it.
- */
-void writePat(Heap *heap, Chunk *c, MemValue pat) {
-    for (size_t i = 0; i < c->size; i++) {
-        heap->driver->write(c->head + i, pat);
-    }
-}
-
-/*!
- * Checks if a certain chunk contains a given pattern.
- * \param  *heap   On which heap the check is performed.
- * \param   c      Chunk that should contain the pattern
- * \param   pat    Pattern that should be found in that chunk
- * \return         1 if the pattern exists at that position, 0 otherwise
- */
-bool checkChunkPat(Heap *heap, Chunk *c, MemValue pat) {
-    for (size_t i = 0; i < c->size; i++) {
-        if (heap->driver->read(c->head + i) != pat) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/*!
- * Checks if a certain area in the memory contains a given pattern.
- * \param  *heap   On which heap the check is performed.
- * \param   start  First address where the pattern starts
- * \param   length Length of the memory area that is to be checked
- * \param   pat    Pattern that should be found in that area
- * \return         1 if the pattern exists at that position, 0 otherwise
- */
-bool checkMemPat(Heap *heap, MemAddr start, MemAddr length, MemValue pat) {
+//! non-destructively check whether a queue contains the given list of processes in that order
+static bool test_processQueueMatches(const ProcessQueue *queue, const ProcessID pat[], size_t length) {
+    ProcessQueue copy;
+    memcpy(&copy, queue, sizeof(ProcessQueue));
     for (size_t i = 0; i < length; i++) {
-        if (heap->driver->read(start + i) != pat) {
+        if (!pqueue_hasNext(&copy)) {
             return false;
         }
-    }
-    return true;
-}
-
-/*!
- * Allocates all chunks in the given chunk array, writes a pattern to each
- * chunk and deallocates all dummies.
- * \param  *heap   Heap on which this action is to be performed
- * \param  *chunks Array of chunks that are ot be allocated/freed
- * \param   count  Size of chunks-array
- */
-void massAlloc(Heap *heap, Chunk *chunks, size_t count) {
-    // Allocation phase
-    for (size_t i = 0; i < count; i++) {
-        chunks[i].head = os_malloc(heap, chunks[i].size);
-        if (!chunks[i].head) {
-            TEST_FAILED_HEAP_AND_HALT("malloc", heap);
+        if (pqueue_getFirst(&copy) != pat[i]) {
+            return false;
         }
-        writePat(heap, chunks + i, i);
+        pqueue_dropFirst(&copy);
+    }
+    return !pqueue_hasNext(&copy);
+}
+
+void endless_loop(void) {
+    HALT;
+}
+
+REGISTER_AUTOSTART(test_program);
+void test_program(void) {
+    // register a custom char that looks like a ^ and a . in the same LCD cell
+    // to elegantly represent the head == tail situation
+    // There is no particular reason for using the DEGREE slot
+    // but it is likely not used in default messages of the OS
+    lcd_registerCustomChar(LCD_CC_IXI, CUSTOM_CHAR(0b00100, 0b01010, 0b10001, 0b00000, 0b00000, 0b01100, 0b01100, 0b00000));
+
+    os_setSchedulingStrategy(OS_SS_EVEN);
+
+#if PHASE_1_INIT || PHASE_2_SIMPLE || PHASE_3_CONSISTENCY || PHASE_4_REMOVE
+    ProcessQueue queue;
+    pqueue_init(&queue);
+    uint8_t queue_display_delay_factor = 10;
+#endif
+
+// Phase 1: Test Queue initialization
+#if PHASE_1_INIT
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 1: Init"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+
+    SHOW_QUEUE;
+
+    // head / tail must be 0
+    if (queue.head != 0 || queue.tail != 0) {
+        TEST_FAILED_QUEUE_VIEWER("Head/Tail not 0");
     }
 
-    // Free phase
-    for (size_t i = 0; i < count; i++) {
-        if (chunks[i].dummy) {
-            os_free(heap, chunks[i].head);
+    // For MLFQ, it is sufficient to fit all processes except
+    // the idle process (which is only scheduled as a last-resort)
+    if (queue.size < MAX_NUMBER_OF_PROCESSES - 1) {
+        TEST_FAILED_QUEUE_VIEWER("size too small for MLFQ");
+    }
+
+    // size must not be greater than the number of elements in the array
+    if (queue.size > sizeof(queue.data) / sizeof(queue.data[0])) {
+        TEST_FAILED_QUEUE_VIEWER("array too small for size");
+    }
+
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 1: Init"));
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+#endif
+
+// Phase 2: Simple Queue Operations
+// Enqueue a single element, get it with getFirst and drop it again
+#if PHASE_2_SIMPLE
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 2: Simple Operations"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+    SHOW_QUEUE;
+    pqueue_append(&queue, 1);
+    SHOW_QUEUE;
+
+    // Create a copy of the queue to test that getFirst does not change state
+    ProcessQueue queue_copy = queue;
+
+    if (!pqueue_hasNext(&queue)) {
+        TEST_FAILED_QUEUE_VIEWER("queue should have next");
+    }
+    if (pqueue_getFirst(&queue) != 1) {
+        TEST_FAILED_QUEUE_VIEWER("unexpected element");
+    }
+    if (memcmp(&queue, &queue_copy, sizeof(ProcessQueue))) {
+        TEST_FAILED_QUEUE_VIEWER("getFirst changed queue");
+    }
+    pqueue_dropFirst(&queue);
+    SHOW_QUEUE;
+
+    if (pqueue_hasNext(&queue)) {
+        TEST_FAILED_QUEUE_VIEWER("queue should be empty");
+    }
+
+    pqueue_reset(&queue);
+    SHOW_QUEUE;
+
+    if (queue.head != 0 || queue.tail != 0) {
+        TEST_FAILED_QUEUE_VIEWER("head/tail != 0 after reset");
+    }
+
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 2: Simple Operations"));
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+#endif
+
+// Phase 3: Consistency
+#if PHASE_3_CONSISTENCY
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 3: Consistency"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+
+    // we are doing a lot of operations so we reduce the time for each queue display
+    queue_display_delay_factor = 1;
+
+    // We want to test for possible edge cases in the enqueue / dequeue logic
+    // that can occur when wrapping from the end of the array to the start
+    // Therefore, for every possible start position of the tail, we fill a queue
+    // completely and then clear it out again, while checking the values
+    // Since we add the IDs of all processes, we also check whether the
+    // queue has suitable space to implement MLFQ as a side effect
+    uint8_t array_length = sizeof(queue.data) / sizeof(queue.data[0]);
+
+    for (uint8_t start = 0; start < array_length; start++) {
+        queue.head = queue.tail = start;
+        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
+            pqueue_append(&queue, pid);
+            SHOW_QUEUE;
+        }
+
+        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
+            if (!pqueue_hasNext(&queue)) {
+                TEST_FAILED_QUEUE_VIEWER("queue should have next");
+            }
+            if (pqueue_getFirst(&queue) != pid) {
+                TEST_FAILED_QUEUE_VIEWER("unexpected element");
+            }
+            pqueue_dropFirst(&queue);
+            SHOW_QUEUE;
+        }
+        if (pqueue_hasNext(&queue)) {
+            TEST_FAILED_QUEUE_VIEWER("queue should be empty");
         }
     }
-}
 
-/*!
- * Frees all non dummy chunks of the given chunk array.
- * \param  *heap   Heap on which this action is to be performed
- * \param  *chunks Array of chunks that are ot be allocated/freed
- * \param   count  Size of chunks-array
- */
-void massFree(Heap *heap, Chunk *chunks, size_t count) {
-    for (size_t i = 0; i < count; i++) {
-        if (!chunks[i].dummy) {
-            os_free(heap, chunks[i].head);
-        }
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 3: Consistency"));
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+#endif
+
+#if PHASE_4_REMOVE
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 4: Remove"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+    queue_display_delay_factor = 10;
+
+
+    ProcessQueue template;
+    pqueue_init(&template);
+    template.head = template.tail = template.size / 2;
+
+
+    for (ProcessID pid = 1; pid < 8; pid++) {
+        pqueue_append(&template, pid);
     }
-}
-
-/*!
- * Allocates memory on a heap
- * \param heap  Heap on which this action is to be performed
- * \param addr  The address of the allocated memory
- */
-void foreignAlloc(Heap *heap, volatile MemAddr *addr) {
-    // Allocate memory
-    *addr = os_malloc(heap, FOREIGN_ALLOC_SIZE);
-    if (!*addr) {
-        TEST_FAILED_HEAP_AND_HALT("malloc", heap);
-    }
-}
-
-/*!
- * Main test routine
- * In this routine, several chunks are allocated and a pattern is written to
- * them. Then those chunks labeled as dummies are freed again. After that
- * the middle chunk (i.e. with 7 chunks the 3rd chunk) is reallocated to a
- * new size. That size is the sum of the sizes of all chunks labeled as
- * realloc candidates in the reallocBits bitmap.
- * After that reallocation it is checked if the map is correctly representing
- * that reallocation and if the other chunks were not damaged in the process.
- *
- * \param  *heap        Heap to test.
- * \param   dummies     Dummies are those chunks that get freed after all
- *                      chunks were allocated. This bitmap defines, which
- *                      chunk is a dummy. The LSB defines whether the last
- *                      allocated chunk is freed and the MSB defines whether
- *                      the first allocated chunk is freed, etc.
- * \param   reallocBits This bitmap is set up like dummies. Except in this map
- *                      it is defined whose chunks are going to be merged by
- *                      the reallocation.
- * \param   random      If this byte is 0xFF, the new size of the reallocation-
- *                      chunk is calculated deterministically. If it is not
- *                      0xFF, the reallocation-chunk is additionally randomly
- *                      increased for their reallocation. That random value is
- *                      at least 1 and smaller than the size of the chunk with
- *                      index "random".
- * \param   destination This bitmap defines in which chunk the resulting
- *                      reallocated chunk must be located.
- */
-bool makeTest(Heap *heap, uint8_t dummies, uint8_t reallocBits, uint8_t random, uint8_t destination) {
 
 
-    os_setAllocationStrategy(heap, OS_MEM_FIRST);
-
-    size_t useSize = os_getUseSize(heap) - FOREIGN_ALLOC_SIZE;
-    if (useSize > 4096) useSize = 4096;
-
-        // This macro returns 1 for all chunks that are labeled as dummy chunks
-#define IS_DUMMY(i) ((dummies >> (6 - i)) & 1)
-        // This macro returns 1 for all chunks that are labeled as reallocation candidates
-#define IS_REALLOC_CANDIDATE(i) ((reallocBits >> (6 - i)) & 1)
-        // This macro returns 1 for all chunks that are still untouched after their initial allocation
-#define IS_PERSISTENT(i) (!(IS_DUMMY(i) || IS_REALLOC_CANDIDATE(i)))
+    // Simple checks for removing an element at the front, back or in the middle
+    // We restore the queue every time to make sure that it wraps around
+    // this makes it more likely to provoke errors
+    queue = template;
+    SHOW_QUEUE;
+    assert_pattern_after_remove(1, Q(2, 3, 4, 5, 6, 7), "front");
 
 
-    // 1. Preparation of chunks
+    queue = template;
+    SHOW_QUEUE;
+    assert_pattern_after_remove(7, Q(1, 2, 3, 4, 5, 6), "back");
+    queue = template;
+    SHOW_QUEUE;
+    assert_pattern_after_remove(4, Q(1, 2, 3, 5, 6, 7), "mid");
+
+
+    queue = template;
+    SHOW_QUEUE;
+    assert_pattern_after_remove(4, Q(1, 2, 3, 5, 6, 7), "successive");
+    assert_pattern_after_remove(1, Q(2, 3, 5, 6, 7), "successive");
+    assert_pattern_after_remove(7, Q(2, 3, 5, 6), "successive");
+    assert_pattern_after_remove(3, Q(2, 5, 6), "successive");
+    assert_pattern_after_remove(2, Q(5, 6), "successive");
+    assert_pattern_after_remove(6, Q(5), "successive");
+    assert_pattern_after_remove(5, Q(), "successive");
+
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 4: Remove"));
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+#endif
+
+#if PHASE_5_MLFQ
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 5: MLFQ Integration"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+
+    // we do not want to run our dummy processes or the MLFQ strat
+    os_enterCriticalSection();
 
     /*
-     * In this chunk array, 7 chunks will be prepared. Chunks 0,2,3,4 have semi-
-     * random sizes, the other sizes are fixed. Chunk 6 has a size as big as the
-     * whole use-size. This is only temporary, as its size will be corrected
-     * below
+     * we want four processes with PID 1-4, with a respective priority of
+     * (pid - 1) << 6 to cover all process queues.
+     * The test process should have PID 1, so we can use it if we manually change its prio
+     * In addition, we need to exec three new processes
      */
-    Chunk chunks[] = {
-        {.size = rand() % (useSize / 6) + useSize / 6 /* useSize/6 <= size < 2*useSize/6 */, .dummy = IS_DUMMY(0)},
-        {                                                                         .size = 1, .dummy = IS_DUMMY(1)},
-        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(2)},
-        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(3)},
-        {                   .size = rand() % (useSize / 6) + 1 /* 1 <= size <= useSize/6 */, .dummy = IS_DUMMY(4)},
-        {                                                                         .size = 1, .dummy = IS_DUMMY(5)},
-        {                                                                   .size = useSize, .dummy = IS_DUMMY(6)}
-    };
-
-    // Now resize last chunk so that the sum of the chunk sizes equals the total use size.
-    const size_t cSize = sizeof(chunks) / sizeof(*chunks); // Size of chunks[]
-    const size_t reallocIndex = cSize / 2;                 // Index of block we want to reallocate
-
-    for (size_t i = 0; i < cSize - 1; i++) {
-        chunks[cSize - 1].size -= chunks[i].size;
+    if (os_getCurrentProc() != 1) {
+        TEST_FAILED("Incorrect PID");
     }
 
+    os_getProcessSlot(1)->priority = 0b00000000;
 
-    // 2. Allocation of chunks
+    if (os_exec(endless_loop, 0b01000000) != 2) {
+        TEST_FAILED("Incorrect PID");
+        HALT;
+    }
 
-    // Allocate all prepared chunks. Then a pattern is written to the chunks and
-    // those chunks flagged as dummies are freed
-    massAlloc(heap, chunks, cSize);
+    if (os_exec(endless_loop, 0b10000000) != 3) {
+        TEST_FAILED("Incorrect PID");
+        HALT;
+    }
+
+    if (os_exec(endless_loop, 0b11000000) != 4) {
+        TEST_FAILED("Incorrect PID");
+        HALT;
+    }
+
+    // this call should reset the scheduling information
+    // and insert the processes into the queues
+    os_setSchedulingStrategy(OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE);
 
 
-    // 3. Reallocation of middle chunk
+    // The process queues should be ordered by priority, but it is not specified
+    // whether that order is ascending or descending, so both should pass the testtask
 
-    size_t newSize = 0;
-    // The new size is calculated as the sizes of all those chunks that are
-    // labeled as realloc candidates
-    for (size_t i = 0; i < cSize; i++) {
-        // Add chunk size to new size if reallocate bit is 1
-        if (IS_REALLOC_CANDIDATE(i)) {
-            newSize += chunks[i].size;
+    // we will use some flags that are both true initially and are set to false
+    // whenever we detect that the queues do not match the pattern
+    bool asc = true;
+    bool desc = true;
+
+
+    // Check if process queues are sorted by prio ascending
+    for (uint8_t qid = 0; qid < 4 && asc; qid++) {
+        // process in queue 0 should be 1, ...
+        // only single process per queue
+        uint8_t pattern[] = {qid + 1};
+        const ProcessQueue *q = MLFQ_getQueue(qid);
+        if (!test_processQueueMatches(q, pattern, sizeof(pattern))) {
+            asc = false;
         }
     }
-    // Add some random size to new size
-    if (random != 0xFF) {
-        size_t add = rand() % (chunks[random].size);
-        if (add < 1) {
-            add = 1;
+
+    // if not ascending, order could still be descending or false
+    if (!asc) {
+
+        // check if process queues are sorted by prio descending
+        for (uint8_t qid = 0; qid < 4 && desc; qid++) {
+            // process in queue 0 should be 4 since it has highest prio
+            uint8_t pattern[] = {4 - qid};
+            const ProcessQueue *q = MLFQ_getQueue(qid);
+            if (!test_processQueueMatches(q, pattern, sizeof(pattern))) {
+                desc = false;
+            }
         }
-        // 1 <= add < chunks[random].size
-        newSize += add;
-    }
+        // if neither of these patterns match, display an error
+        // and offer to view the queues
+        if (!desc) {
+            // page 0 : error message, pages 1 - 4: queues 0 - 3
+            uint8_t page = 0;
+            while (true) {
+                lcd_clear();
+                if (page == 0) {
+                    TEST_FAILED("Incorrect queue (press UP)");
+                } else {
+                    test_drawProcessQueue(MLFQ_getQueue(page - 1));
+                    lcd_goto(2, 16);
+                    lcd_writeDec(page - 1);
+                }
 
-    // Reallocate the chunk with index reallocIndex to newSize
-    const Chunk old = chunks[reallocIndex];
-    chunks[reallocIndex].size = newSize;
-    chunks[reallocIndex].head = os_realloc(heap, chunks[reallocIndex].head, newSize);
+                // wait until either up or down is pressed and record it
+                uint8_t in;
+                while (!(in = os_getInput() & 0b0110)) continue;
 
-
-    // 4. Check if os_realloc returns a valid address
-
-    // Check if os_realloc found a valid position for the new chunk
-    if (chunks[reallocIndex].head == 0) {
-        TEST_FAILED_HEAP_AND_HALT("allocation", heap);
-    }
-
-
-    // 5. Check if memcpy was successful
-
-    // Confirm the written pattern is present in the reallocated block (memcpy)
-    if (!checkMemPat(heap, chunks[reallocIndex].head, MIN(old.size, newSize), reallocIndex)) {
-        TEST_FAILED_HEAP_AND_HALT("memcopy", heap);
-    }
-
-
-    // 6. Check if the map was adapted correctly
-
-    // Compute the actual size of the reallocated chunk by iterating the map
-    if (progs_getChunkSize(heap, chunks[reallocIndex].head) != newSize) {
-        TEST_FAILED_HEAP_AND_HALT("map adaptation", heap);
-    }
-
-    // Compute the size of the untouched chunks
-    for (size_t i = 0; i < cSize; i++) {
-        if (IS_PERSISTENT(i)) {
-            if (progs_getChunkSize(heap, chunks[i].head) != chunks[i].size) {
-                TEST_FAILED_HEAP_AND_HALT("map damage", heap);
+                // increment or decrement page accordingly
+                if (in & 0b0100 && page < 4) {
+                    page++;
+                }
+                if (in & 0b0010 && page > 0) {
+                    page--;
+                }
+                os_waitForNoInput();
             }
         }
     }
 
-
-    // 7. Check if the new chunk overlaps with other chunks
-
-    // Rewrite the pattern in the reallocated chunk.
-    writePat(heap, chunks + reallocIndex, reallocIndex);
-
-    // Check all patterns of non dummy chunks.
-    // Therefore checking if reallocation interfered with any other chunk.
-    for (size_t i = 0; i < cSize; i++) {
-        if (!chunks[i].dummy && !checkChunkPat(heap, chunks + i, i)) {
-            TEST_FAILED_HEAP_AND_HALT("pattern broken", heap);
-        }
-    }
-
-
-    // 8. Check if the chunk is at the correct position
-
-    bool found = false;
-    for (size_t i = 0; !found && i < cSize; i++) {
-        if ((1 << (6 - i)) & destination) {
-            if (i == reallocIndex) {
-                found = (chunks[reallocIndex].head == old.head);
-            } else {
-                found = (chunks[reallocIndex].head == chunks[i].head);
-            }
-        }
-    }
-
-
-    // 9. Clean up
-
-    // Free remaining chunks
-    massFree(heap, chunks, cSize);
-
-    return found;
-
-
-#undef IS_PERSISTENT
-#undef IS_REALLOC_CANDIDATE
-#undef IS_DUMMY
-}
-
-/*!
- * Print test message.
- * \param   i    Index of test
- * \param  *msg  Name of test
- * \param  *heap Heap on which the test is performed
- */
-void test(char i, const char *msg, Heap *heap) {
-
-    static char PROGMEM const spaces16[] = "                ";
-    os_enterCriticalSection();
-    if (heap == intHeap) {
-        lcd_line1();
-        lcd_writeProgString(spaces16);
-        lcd_line1();
-        lcd_writeChar(i);
-        lcd_writeProgString(PSTR("i:"));
-    } else {
-        lcd_line2();
-        lcd_writeProgString(spaces16);
-        lcd_line2();
-        lcd_writeChar(i);
-        lcd_writeProgString(PSTR("e:"));
-    }
-    lcd_writeProgString(msg);
-    os_leaveCriticalSection();
-    delayMs(5 * DEFAULT_OUTPUT_DELAY);
-}
-
-/*!
- * If a reallocation test was successful, this prints "OK" in the correct line
- * \param  *heap Heap on which the test was successful
- */
-void ok(Heap *heap) {
-    os_enterCriticalSection();
-    if (heap == intHeap) {
-        lcd_goto(1, 15);
-    }
-    if (heap == extHeap) {
-        lcd_goto(2, 15);
-    }
-    lcd_writeProgString(PSTR("OK"));
-    os_leaveCriticalSection();
-    delayMs(5 * DEFAULT_OUTPUT_DELAY);
-}
-
-/*!
- * If a reallocation test fails, this function prints "FAIL" and labels the
- * whole test on that heap as failed.
- * \param  *heap Heap where the test failed
- */
-void fail(Heap *heap) {
-    os_enterCriticalSection();
-    if (heap == intHeap) {
-        lcd_goto(1, 13);
-        failI = true;
-    } else {
-        lcd_goto(2, 13);
-        failE = true;
-    }
-    lcd_writeProgString(PSTR("FAIL"));
-    os_leaveCriticalSection();
-    delayMs(10 * DEFAULT_OUTPUT_DELAY);
-}
-
-/*!
- * Runs the tests on one of the heaps.
- * \param  *heap Heap on which the tests are run.
- */
-void runTest(Heap *heap) {
-    // Try to reallocate memory of another process
-    ATOMIC {
-        test('1', PSTR("Owner"), heap);
-
-        MemAddr addr = (heap == intHeap ? addrI : addrE);
-        EXPECT_ERROR("owner restrict.");
-        {
-            // Attempt the reallocation - error expected
-            addr = os_realloc(heap, addr, 1);
-        }
-        ASSERT_ERROR(heap, "owner");
-
-        test('1', PSTR("Owner"), heap);
-        // Check that null is returned
-        if (!addr) {
-            ok(heap);
-        } else {
-            fail(heap);
-        }
-        if (heap == intHeap) {
-            errorI = true;
-        } else {
-            errorE = true;
-        }
-    }
-
-    // Wait till all errors were provoked
-    while ((IS_TESTING(intHeap) && !errorI) || (IS_TESTING(extHeap) && !errorE)) continue;
-
-    EXPECT_NO_ERROR;
-
-    // Expand by the chunk to the right.
-    // Use free memory to the right.
-    test('2', PSTR("R.res."), heap);
-    if (makeTest(heap, 0b1110101, 0b0001100, 0xFF, 0b0001000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Expand by the chunk to the left
-    // Use free memory to the left or free and malloc.
-    test('3', PSTR("L.res."), heap);
-    if (makeTest(heap, 0b1010011, 0b0011000, 0xFF, 0b0010000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Force expansion by one chunk to the left.
-    test('4', PSTR("L.frc."), heap);
-    if (makeTest(heap, 0b0010000, 0b0011000, 0xFF, 0b0010000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Expand by a bit more than the chunk to the right.
-    // Use free memory to the left and right or free and malloc.
-    test('5', PSTR("LR.res."), heap);
-    if (makeTest(heap, 0b1010101, 0b0001100, 2, 0b0010000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Expand by a bit more than the free memory to the right.
-    // Force expansion to the left and right.
-    test('6', PSTR("LR.frc."), heap);
-    if (makeTest(heap, 0b0010100, 0b0001100, 2, 0b0010000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Expand chunk to roughly double size without having free memory left or right.
-    // Thereby forcing to move (free and malloc) the chunk.
-    test('7', PSTR("Move"), heap);
-    if (makeTest(heap, 0b1100001, 0b1000000, 0xFF, 0b1000001)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Shrink chunk to randomly chosen smaller size.
-    test('8', PSTR("Shrink"), heap);
-    if (makeTest(heap, 0b1110111, 0b0000000, 3, 0b0001000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    // Keep the chunk as is.
-    test('9', PSTR("Keep"), heap);
-    if (makeTest(heap, 0b1110111, 0b0001000, 0xFF, 0b0001000)) {
-        ok(heap);
-    } else {
-        fail(heap);
-    }
-
-    ASSERT_NO_ERROR(heap);
-
-    test(' ', PSTR("done"), heap);
-}
-
-void runTestI(void) {
-    runTest(intHeap);
-}
-
-void runTestE(void) {
-    runTest(extHeap);
-}
-
-void awaitProcess(ProcessID pid) {
-    while (os_getProcessSlot(pid)->state != OS_PS_UNUSED) continue;
-}
-
-REGISTER_AUTOSTART(program)
-void program(void) {
-    stderr = wrappedStderr;
-    ProcessID pidI = 0, pidE = 0;
-
-#if TEST_INTERNAL
-    foreignAlloc(intHeap, &addrI); // Allocate memory for the owner check
-    pidI = os_exec(runTestI, DEFAULT_PRIORITY);
-#endif
-
-#if TEST_EXTERNAL
-    foreignAlloc(extHeap, &addrE); // Allocate memory for the owner check
-    pidE = os_exec(runTestE, DEFAULT_PRIORITY);
-#endif
-
-    if (pidI) awaitProcess(pidI);
-    if (pidE) awaitProcess(pidE);
-
-    if (failE || failI) {
-        ATOMIC {
-            TEST_FAILED("");
+    // we passed the test. kill all remaining process
+    // so that we end with the idle process running as usual
+    for (ProcessID pid = 2; pid < 5; pid++) {
+        if (!os_kill(pid)) {
+            TEST_FAILED("Kill failure");
             HALT;
         }
     }
+
+    // ensure that MLFQ will not be called and break something
+    os_setSchedulingStrategy(OS_SS_EVEN);
+    os_leaveCriticalSection();
+
+    lcd_clear();
+    lcd_writeProgString(PSTR("Phase 5: MLFQ Integration"));
+    lcd_goto(2, 15);
+    lcd_writeProgString(PSTR("OK"));
+    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+
+#endif
+
 
 // SUCCESS
 #if CONFIRM_REQUIRED

@@ -389,9 +389,11 @@ bool os_kill(ProcessID pid){
 	if (pid==currentProc && criticalSectionCount >0){
 		os_leaveCriticalSection();
 	}
-	// ersetzbar durch os_yield aber erstmal nicht fuer stabilitaet
-	while(pid==currentProc){}
-		
+	//while(pid==currentProc){}
+	if(pid==currentProc){	
+		os_yield();
+	}
+
 	return true;
 }
 
@@ -400,7 +402,9 @@ bool os_kill(ProcessID pid){
 void os_yield(void) {
 	os_enterCriticalSection();
 	//Prozess blockieren
-	os_processes[currentProc].state = OS_PS_BLOCKED;
+	if (os_processes[currentProc].state!=OS_PS_UNUSED){
+		os_processes[currentProc].state = OS_PS_BLOCKED;
+	}
 	//Status des Global Interrupt Enable Bits (GIEB) des SREG-Registers sichern
 	uint8_t savedSERG = (SREG & 0b10000000);
 	//Geöffnete CS speichern
@@ -410,8 +414,13 @@ void os_yield(void) {
 	// ISR manuell aufrufen
 	TIMER2_COMPA_vect();
 	//CS wiederherstellen
-	criticalSectionCount = currentOpenCS;
+	criticalSectionCount = currentOpenCS+1;
 	//Global Interrupt Enable Bit wiederherstellen
-	SREG |= savedSERG;
+	if (savedSERG & 0b10000000) {
+		SREG |= 0b10000000;  // Setzen des MSB auf 1
+	} 
+	else {
+		SREG &= 0b01111111;  // Setzen des MSB auf 0
+	}
 	os_leaveCriticalSection();
 }

@@ -474,6 +474,7 @@ void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
 			queue->data[queue->head%queue->size] = 0;
 			queue->head--;
 		}
+		current ++;
 		
 	}
 }
