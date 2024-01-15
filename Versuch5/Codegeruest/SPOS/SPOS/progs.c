@@ -1,15 +1,15 @@
 //-------------------------------------------------
-//          TestTask: Process Queues
+//          TestTask: Shared Access
 //-------------------------------------------------
 
 #include "lcd.h"
 #include "os_core.h"
 #include "os_input.h"
-#include "os_process.h"
+#include "os_memory.h"
 #include "os_scheduler.h"
-#include "os_scheduling_strategies.h"
-#include "string.h"
+#include "util.h"
 
+#include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
 
@@ -17,491 +17,504 @@
 #error "Please fix the VERSUCH-define"
 #endif
 
-
 //---- Adjust here what to test -------------------
-#define PHASE_1_INIT 1
-#define PHASE_2_SIMPLE 1
-#define PHASE_3_CONSISTENCY 1
-#define PHASE_4_REMOVE 1
-#define PHASE_5_MLFQ 1
-
-// Draw the process queues after each step
-// This is useful for debugging, but the task will take
-// longer to complete due to the added delay (which is necessary
-// to actually see the output
-#define DRAW_PROCESS_QUEUES 1
+#define NUM_MAL 5
+#define SIZE 10
+#define DRIVER intHeap
 //-------------------------------------------------
 
 #ifndef WRITE
 #define WRITE(str) lcd_writeProgString(PSTR(str))
 #endif
 #define TEST_PASSED                    \
-    do {                               \
-        ATOMIC {                       \
-            lcd_clear();               \
-            WRITE("  TEST PASSED   "); \
-        }                              \
-    } while (0)
-
-// Keep queue on screen with failure message
-// Note: this restricts messages to 16 chars
+do {                               \
+	ATOMIC {                       \
+		lcd_clear();               \
+		WRITE("  TEST PASSED   "); \
+	}                              \
+} while (0)
 #define TEST_FAILED(reason)  \
-    do {                     \
-        ATOMIC {             \
-            lcd_clear();     \
-            WRITE("FAIL  "); \
-            WRITE(reason);   \
-        }                    \
-    } while (0)
-
-
+do {                     \
+	ATOMIC {             \
+		lcd_clear();     \
+		WRITE("FAIL  "); \
+		WRITE(reason);   \
+	}                    \
+} while (0)
 #ifndef CONFIRM_REQUIRED
 #define CONFIRM_REQUIRED 1
 #endif
 
-// turn off process queue drawing by defining SHOW_QUEUE as empty
-#if !DRAW_PROCESS_QUEUES
-#define SHOW_QUEUE
+#define TEST_FAILED_AND_HALT(reason) \
+do ATOMIC {                      \
+	TEST_FAILED(reason);     \
+	HALT;                    \
+}                            \
+while (0)
+
+
+#if (NUM_MAL * SIZE > 255)
+#error Reduce SIZE or NUM_MAL
+#endif
+#if (SIZE < 4)
+#error Chunks must at least be 4 Bytes
 #endif
 
-//! call the queue display method with the address of a locally defined ProcessQueue queue, and a delay depending on queue_display_delay_factor
-// only define this macro if it has not been already to allow overriding by external tools
-#ifndef SHOW_QUEUE
-#define SHOW_QUEUE test_displayProcessQueue(&queue, queue_display_delay_factor *DEFAULT_OUTPUT_DELAY)
-#endif
 
-//! Show a failure message with the option to switch to a queue view
-#define TEST_FAILED_QUEUE_VIEWER(message) \
-    do {                                  \
-        TEST_FAILED(message);             \
-        os_waitForInput();                \
-        os_waitForNoInput();              \
-        test_drawProcessQueue(&queue);    \
-        os_waitForInput();                \
-        os_waitForNoInput();              \
-    } while (1)
+static bool errflag = false;
 
+static int stderrWrapper(const char c, FILE *stream) {
+	errflag = true;
+	putchar(c);
+	return 0;
+}
+static FILE *wrappedStderr = &(FILE)FDEV_SETUP_STREAM(stderrWrapper, NULL, _FDEV_SETUP_WRITE);
 
-// Simple macro to define an array (using compound initializers) in-place
-// This macro uses variadic arguments, so it can take any number of arguments
-// __VA_ARGS__ just resembles exactly the input arguments as a text string with commas
-// so all input values will just be pasted into an array initializer
-#define Q(...) ((ProcessID[]){__VA_ARGS__})
+#define EXPECT_ERROR(label)                            \
+do {                                               \
+	lcd_clear();                                   \
+	lcd_writeProgString(PSTR("Please confirm  ")); \
+	lcd_writeProgString(PSTR(label ":"));          \
+	delayMs(DEFAULT_OUTPUT_DELAY * 10);            \
+	errflag = false;                               \
+} while (0)
 
-// Test if the queue resembles pattern after removing pid
-// expects a local ProcessQueue queue
-#define assert_pattern_after_remove(pid, pattern, message)                                    \
-    do {                                                                                      \
-        pqueue_removePID(&queue, pid);                                                        \
-        SHOW_QUEUE;                                                                           \
-        if (!test_processQueueMatches(&queue, pattern, sizeof(pattern) / sizeof(pattern[0]))) \
-            TEST_FAILED_QUEUE_VIEWER("Remove error: " message);                               \
-    } while (0)
+#define EXPECT_NO_ERROR  \
+do {                 \
+	errflag = false; \
+} while (0)
 
+#define ASSERT_ERROR(label)                               \
+do {                                                  \
+	if (!errflag) {                                   \
+		TEST_FAILED_AND_HALT("No error (" label ")"); \
+	}                                                 \
+} while (0)
 
-//! draws a visual representation of the queue array, head and tail
-static void test_drawProcessQueue(const ProcessQueue *queue) {
-    // calculate the length of the queue defined by the students
-    // using sizeof() should work here since data is required to be
-    // an array inside of the struct with a fixed size
-    uint8_t array_length = sizeof(queue->data) / sizeof(queue->data[0]);
-    lcd_clear();
-    lcd_writeChar('[');
-    lcd_goto(1, array_length + 2);
-    lcd_writeChar(']');
+#define ASSERT_NO_ERROR                               \
+do {                                              \
+	if (errflag) {                                \
+		TEST_FAILED_AND_HALT("Unexpected error"); \
+	}                                             \
+} while (0)
+
+MemAddr shBlock;
+MemAddr shBlockYield;
+volatile uint8_t state = 0;
+volatile uint8_t mode = 0;
 
 
-    // tail is marked with a ^, head with . . LCD_CC_IXI is a custom char
-    // that displays both a . and a ^ in the same cell
-    if (queue->head == queue->tail) {
-        lcd_goto(2, queue->tail + 2);
-        lcd_writeChar(LCD_CC_IXI);
-    } else {
-        lcd_goto(2, queue->tail + 2);
-        lcd_writeChar('.');
-        lcd_goto(2, queue->head + 2);
-        lcd_writeChar('^');
-    }
+void check_rw_barriers(void) {
+	state = 1;
 
-    // go through the queue and print the elements
-    // there are valid queue implementations where the whole queue
-    // can be filled with user data, so head == tail can mean either a completely
-    // full or completely empty queue. Therefore we have to do a case distinction
-    // with pqueue_hasNext
-    if (pqueue_hasNext(queue)) {
-        uint8_t i = queue->tail;
-        lcd_goto(1, queue->tail + 2);
-        do {
-            // for invalid data inside the queue we write an X
-            if (queue->data[i] < MAX_NUMBER_OF_PROCESSES) {
-                lcd_writeDec(queue->data[i]);
-            } else {
-                lcd_writeChar('X');
-            }
-            i++;
-            // wrap-around both counter and lcd pos
-            if (i == array_length) {
-                i = 0;
-                lcd_goto(1, 2);
-            }
-        } while (i != queue->head);
-    }
+	if (mode == 1) {
+		os_sh_writeOpen(DRIVER, &shBlock);
+		TEST_FAILED_AND_HALT("Read before write");
+		} else if (mode == 2) {
+		os_sh_readOpen(DRIVER, &shBlock);
+		TEST_FAILED_AND_HALT("Write before read");
+		} else if (mode == 3) {
+		os_sh_writeOpen(DRIVER, &shBlock);
+		TEST_FAILED_AND_HALT("Write before write");
+	}
 }
 
-/*! display the queue using \p pqueue_draw for the given delay \p delay.
- * Waits for all buttons to be released before returning, so the program can be frozen by holding down a button
- * to look at the queue
- */
-#if PHASE_1_INIT || PHASE_2_SIMPLE || PHASE_3_CONSISTENCY || PHASE_4_REMOVE
-static void test_displayProcessQueue(const ProcessQueue *queue, uint16_t delay) {
-    test_drawProcessQueue(queue);
-    delayMs(delay);
-    // allow students to pause execution to look
-    // at current queue state
-    os_waitForNoInput();
-}
-#endif
-
-//! non-destructively check whether a queue contains the given list of processes in that order
-static bool test_processQueueMatches(const ProcessQueue *queue, const ProcessID pat[], size_t length) {
-    ProcessQueue copy;
-    memcpy(&copy, queue, sizeof(ProcessQueue));
-    for (size_t i = 0; i < length; i++) {
-        if (!pqueue_hasNext(&copy)) {
-            return false;
-        }
-        if (pqueue_getFirst(&copy) != pat[i]) {
-            return false;
-        }
-        pqueue_dropFirst(&copy);
-    }
-    return !pqueue_hasNext(&copy);
+void check_readOpen_yield(void) {
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	os_sh_readOpen(DRIVER, &shBlockYield);
+	TEST_FAILED_AND_HALT("No yield when read opened");
 }
 
-void endless_loop(void) {
-    HALT;
+void check_readwriteOpen_yield(void) {
+	if (mode == 0) {
+		os_sh_writeOpen(DRIVER, &shBlockYield);
+		os_sh_readOpen(DRIVER, &shBlockYield);
+		os_sh_readOpen(DRIVER, &shBlockYield);
+		TEST_FAILED_AND_HALT("No yield when w/r opened");
+		} else if (mode == 1) {
+		os_sh_readOpen(DRIVER, &shBlockYield);
+		os_sh_readOpen(DRIVER, &shBlockYield);
+		os_sh_writeOpen(DRIVER, &shBlockYield);
+		TEST_FAILED_AND_HALT("No yield when r/w opened");
+	}
 }
 
-REGISTER_AUTOSTART(test_program);
-void test_program(void) {
-    // register a custom char that looks like a ^ and a . in the same LCD cell
-    // to elegantly represent the head == tail situation
-    // There is no particular reason for using the DEGREE slot
-    // but it is likely not used in default messages of the OS
-    lcd_registerCustomChar(LCD_CC_IXI, CUSTOM_CHAR(0b00100, 0b01010, 0b10001, 0b00000, 0b00000, 0b01100, 0b01100, 0b00000));
+REGISTER_AUTOSTART(program1)
+void program1(void) {
+	MemAddr allocs[NUM_MAL];
+	MemAddr opBlock1, opBlock2;
 
-    os_setSchedulingStrategy(OS_SS_EVEN);
+	stderr = wrappedStderr;
 
-#if PHASE_1_INIT || PHASE_2_SIMPLE || PHASE_3_CONSISTENCY || PHASE_4_REMOVE
-    ProcessQueue queue;
-    pqueue_init(&queue);
-    uint8_t queue_display_delay_factor = 10;
-#endif
+	// Allocate some shared memory
+	lcd_writeProgString(PSTR("1: Allocating..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	for (uint8_t i = 0; i < NUM_MAL; i++) {
+		EXPECT_NO_ERROR;
+		lcd_clear();
+		lcd_writeDec(i);
+		allocs[i] = os_sh_malloc(DRIVER, 10);
 
-// Phase 1: Test Queue initialization
-#if PHASE_1_INIT
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 1: Init"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+		// Assure that the allocated memory chunks are pairwise distinct
+		bool different = true;
+		for (uint8_t j = 0; different && j < i; j++) {
+			different = allocs[j] != allocs[i];
+		}
+		lcd_writeChar(' ');
+		if (!different) {
+			TEST_FAILED_AND_HALT("          1: Allocating");
+		}
+		lcd_writeProgString(PSTR("OK"));
+		ASSERT_NO_ERROR;
+		delayMs(DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    SHOW_QUEUE;
+	// Test if locks can be opened and closed.
+	lcd_writeProgString(PSTR("2a: Accessing (open/close)..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	for (uint8_t i = 0; i < NUM_MAL; i++) {
+		EXPECT_NO_ERROR;
+		lcd_clear();
+		lcd_writeDec(i);
+		lcd_writeChar(' ');
+		for (uint8_t j = 0; j < SIZE; j++) {
+			const MemAddr p = allocs[i] + j;
+			os_sh_writeOpen(DRIVER, &p);
+			os_sh_close(DRIVER, p);
+			os_sh_readOpen(DRIVER, &p);
+			os_sh_close(DRIVER, p);
+		}
+		ASSERT_NO_ERROR;
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    // head / tail must be 0
-    if (queue.head != 0 || queue.tail != 0) {
-        TEST_FAILED_QUEUE_VIEWER("Head/Tail not 0");
-    }
+	// Test if locks can read on private memory
+	lcd_writeProgString(PSTR("2b: Read on private..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		EXPECT_ERROR("read on private");
+		MemAddr privBlock = os_malloc(DRIVER, 10);
+		os_sh_readOpen(DRIVER, &privBlock);
+		os_free(DRIVER, privBlock);
+		ASSERT_ERROR("read on private");
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    // For MLFQ, it is sufficient to fit all processes except
-    // the idle process (which is only scheduled as a last-resort)
-    if (queue.size < MAX_NUMBER_OF_PROCESSES - 1) {
-        TEST_FAILED_QUEUE_VIEWER("size too small for MLFQ");
-    }
+	// Test if locks can write on private memory
+	lcd_writeProgString(PSTR("2c: Write on private..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		EXPECT_ERROR("write on priv.");
+		MemAddr privBlock = os_malloc(DRIVER, 10);
+		os_sh_writeOpen(DRIVER, &privBlock);
+		os_free(DRIVER, privBlock);
+		ASSERT_ERROR("write on priv.");
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    // size must not be greater than the number of elements in the array
-    if (queue.size > sizeof(queue.data) / sizeof(queue.data[0])) {
-        TEST_FAILED_QUEUE_VIEWER("array too small for size");
-    }
+	// Do some simple write operations
+	lcd_writeProgString(PSTR("3: Writing..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	for (uint8_t i = 0; i < NUM_MAL; i++) {
+		EXPECT_NO_ERROR;
+		lcd_clear();
+		lcd_writeDec(i);
+		lcd_writeChar(' ');
+		for (uint8_t j = 0; j < SIZE; j++) {
+			const MemValue a = i * SIZE + j;
+			const MemAddr p = allocs[i];
+			os_sh_write(DRIVER, &p, j, &a, 1);
+		}
+		ASSERT_NO_ERROR;
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 1: Init"));
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-#endif
+	// Read the written pattern and test if it's still the same
+	lcd_writeProgString(PSTR("4: Reading..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	for (uint8_t i = 0; i < NUM_MAL; i++) {
+		EXPECT_NO_ERROR;
+		lcd_clear();
+		lcd_writeDec(i);
+		lcd_writeChar(' ');
+		MemValue a;
+		for (uint8_t j = 0; j < SIZE; j++) {
+			const MemAddr p = allocs[i];
+			a = (MemValue)-1;
+			os_sh_read(DRIVER, &p, j, &a, 1);
+			if (a != i * SIZE + j) {
+				cli();
+				lcd_clear();
+				lcd_writeDec(i);
+				lcd_writeChar(' ');
+				lcd_writeProgString(PSTR("FAILURE @ "));
+				lcd_writeDec(j);
+				lcd_writeChar('/');
+				lcd_writeDec(SIZE);
+				delayMs(DEFAULT_OUTPUT_DELAY * 10);
+				TEST_FAILED_AND_HALT("          4: Reading");
+				sei();
+			}
+		}
+		ASSERT_NO_ERROR;
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-// Phase 2: Simple Queue Operations
-// Enqueue a single element, get it with getFirst and drop it again
-#if PHASE_2_SIMPLE
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 2: Simple Operations"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-    SHOW_QUEUE;
-    pqueue_append(&queue, 1);
-    SHOW_QUEUE;
+	// Now read past the end of the allocated memory to provoke an error
+	lcd_writeProgString(PSTR("5: Provoking viol. (read)..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		EXPECT_ERROR("read violation");
+		const MemAddr p = allocs[1] + 1;
+		uint32_t a;
+		os_sh_read(DRIVER, &p, SIZE - 3, (MemValue *)&a, 4);
+		ASSERT_ERROR("read violation");
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    // Create a copy of the queue to test that getFirst does not change state
-    ProcessQueue queue_copy = queue;
+	// As above just with writing
+	lcd_writeProgString(PSTR("6: Provoking viol. (write)..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		EXPECT_ERROR("write violation");
+		const MemAddr p = allocs[1] + 2;
+		const MemValue a = 0xFF;
+		os_sh_write(DRIVER, &p, SIZE, &a, 1);
+		ASSERT_ERROR("write violation");
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    if (!pqueue_hasNext(&queue)) {
-        TEST_FAILED_QUEUE_VIEWER("queue should have next");
-    }
-    if (pqueue_getFirst(&queue) != 1) {
-        TEST_FAILED_QUEUE_VIEWER("unexpected element");
-    }
-    if (memcmp(&queue, &queue_copy, sizeof(ProcessQueue))) {
-        TEST_FAILED_QUEUE_VIEWER("getFirst changed queue");
-    }
-    pqueue_dropFirst(&queue);
-    SHOW_QUEUE;
+	// Now check if the write operation was executed despite the access violation
+	lcd_writeProgString(PSTR("7: Checking..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		const MemAddr p = allocs[2];
+		MemValue a = 0xBB;
+		os_sh_read(DRIVER, &p, 0, &a, 1);
+		delayMs(3 * DEFAULT_OUTPUT_DELAY);
+		if (a != 2 * SIZE + 0) {
+			TEST_FAILED_AND_HALT("          7: Checking");
+		}
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-    if (pqueue_hasNext(&queue)) {
-        TEST_FAILED_QUEUE_VIEWER("queue should be empty");
-    }
+	// Check parallel reading
+	lcd_writeProgString(PSTR("8: Multiple access..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		shBlock = os_sh_malloc(DRIVER, 10);
+		if (shBlock == 0) {
+			TEST_FAILED_AND_HALT("Not enough memory");
+		}
+		shBlockYield = os_sh_malloc(DRIVER, 10);
+		if (shBlockYield == 0) {
+			TEST_FAILED_AND_HALT("Not enough memory");
+		}
 
-    pqueue_reset(&queue);
-    SHOW_QUEUE;
+		lcd_clear();
+		lcd_writeProgString(PSTR("readOpen Yield"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		ProcessID readOpenProc = os_exec(check_readOpen_yield, DEFAULT_PRIORITY);
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		os_kill(readOpenProc);
 
-    if (queue.head != 0 || queue.tail != 0) {
-        TEST_FAILED_QUEUE_VIEWER("head/tail != 0 after reset");
-    }
+		lcd_clear();
+		lcd_writeProgString(PSTR("write/readOpen  Yield"));
+		mode = 0;
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		ProcessID writeReadOpenProc = os_exec(check_readwriteOpen_yield, DEFAULT_PRIORITY);
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		os_kill(writeReadOpenProc);
 
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 2: Simple Operations"));
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-#endif
+		lcd_clear();
+		lcd_writeProgString(PSTR("read/writeOpen  Yield"));
+		mode = 1;
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		ProcessID readWriteOpenProc = os_exec(check_readwriteOpen_yield, DEFAULT_PRIORITY);
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+		os_kill(readWriteOpenProc);
 
-// Phase 3: Consistency
-#if PHASE_3_CONSISTENCY
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 3: Consistency"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
+		// Open the block twice (-> test parallel reading)
+		opBlock1 = os_sh_readOpen(DRIVER, &shBlock);
+		if (opBlock1 != shBlock) {
+			TEST_FAILED_AND_HALT("Address has changed (1)");
+		}
 
-    // we are doing a lot of operations so we reduce the time for each queue display
-    queue_display_delay_factor = 1;
+		lcd_clear();
+		lcd_writeProgString(PSTR("1x readOpen"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
-    // We want to test for possible edge cases in the enqueue / dequeue logic
-    // that can occur when wrapping from the end of the array to the start
-    // Therefore, for every possible start position of the tail, we fill a queue
-    // completely and then clear it out again, while checking the values
-    // Since we add the IDs of all processes, we also check whether the
-    // queue has suitable space to implement MLFQ as a side effect
-    uint8_t array_length = sizeof(queue.data) / sizeof(queue.data[0]);
+		opBlock2 = os_sh_readOpen(DRIVER, &shBlock);
+		if (opBlock2 != shBlock) {
+			TEST_FAILED_AND_HALT("Address has changed (2)");
+		}
 
-    for (uint8_t start = 0; start < array_length; start++) {
-        queue.head = queue.tail = start;
-        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
-            pqueue_append(&queue, pid);
-            SHOW_QUEUE;
-        }
+		lcd_clear();
+		lcd_writeProgString(PSTR("2x readOpen"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
-        for (ProcessID pid = 1; pid < MAX_NUMBER_OF_PROCESSES; pid++) {
-            if (!pqueue_hasNext(&queue)) {
-                TEST_FAILED_QUEUE_VIEWER("queue should have next");
-            }
-            if (pqueue_getFirst(&queue) != pid) {
-                TEST_FAILED_QUEUE_VIEWER("unexpected element");
-            }
-            pqueue_dropFirst(&queue);
-            SHOW_QUEUE;
-        }
-        if (pqueue_hasNext(&queue)) {
-            TEST_FAILED_QUEUE_VIEWER("queue should be empty");
-        }
-    }
+		EXPECT_NO_ERROR;
+		os_sh_close(DRIVER, opBlock2);
+		ASSERT_NO_ERROR;
 
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 3: Consistency"));
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-#endif
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
-#if PHASE_4_REMOVE
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 4: Remove"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-    queue_display_delay_factor = 10;
+	// Check read/write barriers
+	lcd_writeProgString(PSTR("9: Checking RW barriers..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		// Read before write (opBlock1 is still read-open here!):
+		lcd_clear();
+		lcd_writeProgString(PSTR("Read before\nwrite"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
+		// Set behavior of program 2: readOpen
+		mode = 1;
+		os_exec(check_rw_barriers, DEFAULT_PRIORITY);
+		// Grant process at least one time slot
+		while (state == 0) continue;
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+		os_kill(2);
+		state = 0;
+		os_sh_close(DRIVER, opBlock1);
 
-    ProcessQueue template;
-    pqueue_init(&template);
-    template.head = template.tail = template.size / 2;
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
 
+		// Write before read:
+		lcd_clear();
+		lcd_writeProgString(PSTR("Write before\nread"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
-    for (ProcessID pid = 1; pid < 8; pid++) {
-        pqueue_append(&template, pid);
-    }
+		opBlock1 = os_sh_writeOpen(DRIVER, &shBlock);
+		if (opBlock1 != shBlock) {
+			TEST_FAILED_AND_HALT("Address has changed (3)");
+		}
 
+		// Set behavior of program 2: writeOpen
+		mode = 2;
+		os_exec(check_rw_barriers, DEFAULT_PRIORITY);
+		// Grant process at least one time slot
+		while (state == 0) continue;
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+		os_kill(2);
+		state = 0;
 
-    // Simple checks for removing an element at the front, back or in the middle
-    // We restore the queue every time to make sure that it wraps around
-    // this makes it more likely to provoke errors
-    queue = template;
-    SHOW_QUEUE;
-    assert_pattern_after_remove(1, Q(2, 3, 4, 5, 6, 7), "front");
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
 
+		// Write before write:
+		lcd_clear();
+		lcd_writeProgString(PSTR("Write before\nwrite"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
 
-    queue = template;
-    SHOW_QUEUE;
-    assert_pattern_after_remove(7, Q(1, 2, 3, 4, 5, 6), "back");
-    queue = template;
-    SHOW_QUEUE;
-    assert_pattern_after_remove(4, Q(1, 2, 3, 5, 6, 7), "mid");
+		// Set behavior of program 2: readOpen
+		mode = 3;
+		os_exec(check_rw_barriers, DEFAULT_PRIORITY);
+		// Grant process at least one time slot
+		while (state == 0) continue;
+		delayMs(5 * DEFAULT_OUTPUT_DELAY);
+		os_kill(2);
+		state = 0;
+		os_sh_close(DRIVER, opBlock1);
 
-
-    queue = template;
-    SHOW_QUEUE;
-    assert_pattern_after_remove(4, Q(1, 2, 3, 5, 6, 7), "successive");
-    assert_pattern_after_remove(1, Q(2, 3, 5, 6, 7), "successive");
-    assert_pattern_after_remove(7, Q(2, 3, 5, 6), "successive");
-    assert_pattern_after_remove(3, Q(2, 5, 6), "successive");
-    assert_pattern_after_remove(2, Q(5, 6), "successive");
-    assert_pattern_after_remove(6, Q(5), "successive");
-    assert_pattern_after_remove(5, Q(), "successive");
-
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 4: Remove"));
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-#endif
-
-#if PHASE_5_MLFQ
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 5: MLFQ Integration"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-
-    // we do not want to run our dummy processes or the MLFQ strat
-    os_enterCriticalSection();
-
-    /*
-     * we want four processes with PID 1-4, with a respective priority of
-     * (pid - 1) << 6 to cover all process queues.
-     * The test process should have PID 1, so we can use it if we manually change its prio
-     * In addition, we need to exec three new processes
-     */
-    if (os_getCurrentProc() != 1) {
-        TEST_FAILED("Incorrect PID");
-    }
-
-    os_getProcessSlot(1)->priority = 0b00000000;
-
-    if (os_exec(endless_loop, 0b01000000) != 2) {
-        TEST_FAILED("Incorrect PID");
-        HALT;
-    }
-
-    if (os_exec(endless_loop, 0b10000000) != 3) {
-        TEST_FAILED("Incorrect PID");
-        HALT;
-    }
-
-    if (os_exec(endless_loop, 0b11000000) != 4) {
-        TEST_FAILED("Incorrect PID");
-        HALT;
-    }
-
-    // this call should reset the scheduling information
-    // and insert the processes into the queues
-    os_setSchedulingStrategy(OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE);
-
-
-    // The process queues should be ordered by priority, but it is not specified
-    // whether that order is ascending or descending, so both should pass the testtask
-
-    // we will use some flags that are both true initially and are set to false
-    // whenever we detect that the queues do not match the pattern
-    bool asc = true;
-    bool desc = true;
-
-
-    // Check if process queues are sorted by prio ascending
-    for (uint8_t qid = 0; qid < 4 && asc; qid++) {
-        // process in queue 0 should be 1, ...
-        // only single process per queue
-        uint8_t pattern[] = {qid + 1};
-        const ProcessQueue *q = MLFQ_getQueue(qid);
-        if (!test_processQueueMatches(q, pattern, sizeof(pattern))) {
-            asc = false;
-        }
-    }
-
-    // if not ascending, order could still be descending or false
-    if (!asc) {
-
-        // check if process queues are sorted by prio descending
-        for (uint8_t qid = 0; qid < 4 && desc; qid++) {
-            // process in queue 0 should be 4 since it has highest prio
-            uint8_t pattern[] = {4 - qid};
-            const ProcessQueue *q = MLFQ_getQueue(qid);
-            if (!test_processQueueMatches(q, pattern, sizeof(pattern))) {
-                desc = false;
-            }
-        }
-        // if neither of these patterns match, display an error
-        // and offer to view the queues
-        if (!desc) {
-            // page 0 : error message, pages 1 - 4: queues 0 - 3
-            uint8_t page = 0;
-            while (true) {
-                lcd_clear();
-                if (page == 0) {
-                    TEST_FAILED("Incorrect queue (press UP)");
-                } else {
-                    test_drawProcessQueue(MLFQ_getQueue(page - 1));
-                    lcd_goto(2, 16);
-                    lcd_writeDec(page - 1);
-                }
-
-                // wait until either up or down is pressed and record it
-                uint8_t in;
-                while (!(in = os_getInput() & 0b0110)) continue;
-
-                // increment or decrement page accordingly
-                if (in & 0b0100 && page < 4) {
-                    page++;
-                }
-                if (in & 0b0010 && page > 0) {
-                    page--;
-                }
-                os_waitForNoInput();
-            }
-        }
-    }
-
-    // we passed the test. kill all remaining process
-    // so that we end with the idle process running as usual
-    for (ProcessID pid = 2; pid < 5; pid++) {
-        if (!os_kill(pid)) {
-            TEST_FAILED("Kill failure");
-            HALT;
-        }
-    }
-
-    // ensure that MLFQ will not be called and break something
-    os_setSchedulingStrategy(OS_SS_EVEN);
-    os_leaveCriticalSection();
-
-    lcd_clear();
-    lcd_writeProgString(PSTR("Phase 5: MLFQ Integration"));
-    lcd_goto(2, 15);
-    lcd_writeProgString(PSTR("OK"));
-    delayMs(DEFAULT_OUTPUT_DELAY * 10);
-
-#endif
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
 
 
-// SUCCESS
-#if CONFIRM_REQUIRED
-    lcd_clear();
-    lcd_writeProgString(PSTR("  PRESS ENTER!  "));
-    os_waitForInput();
-    os_waitForNoInput();
-#endif
-    TEST_PASSED;
-    lcd_line2();
-    lcd_writeProgString(PSTR(" WAIT FOR IDLE  "));
-    delayMs(DEFAULT_OUTPUT_DELAY * 6);
+	// Check offset
+	lcd_writeProgString(PSTR("10: Checking offset..."));
+	delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	{
+		MemValue value = 0;
+		MemValue pat[10];
+
+		// Write pattern (opBlock1 is still write-open here!):
+		for (uint8_t i = 0; i < 10; i++) {
+			const MemValue a = i + 1;
+			os_sh_write(DRIVER, &shBlock, i, &a, 1);
+		}
+
+		// Read pattern without offset
+		// The read pattern should always be the first one
+		for (uint8_t i = 0; i < 10; i++) {
+			opBlock1 = shBlock + i;
+			os_sh_read(DRIVER, &opBlock1, 0, &value, 1);
+			if (value != 1) {
+				TEST_FAILED_AND_HALT("Pattern mismatch (1)");
+			}
+		}
+
+		// Read pattern one by one with offset
+		for (uint8_t i = 0; i < 10; i++) {
+			os_sh_read(DRIVER, &shBlock, i, &value, 1);
+			if (value != i + 1) {
+				TEST_FAILED_AND_HALT("Pattern mismatch (2)");
+			}
+		}
+
+		// Read pattern all at once without offset
+		os_sh_read(DRIVER, &shBlock, 0, (MemValue *)&pat, 10);
+		for (uint8_t i = 0; i < 10; i++) {
+			if (pat[i] != i + 1) {
+				TEST_FAILED_AND_HALT("Pattern mismatch (3)");
+			}
+		}
+
+		// Read pattern-blocks with false and correct offset
+		for (uint8_t i = 0; i < 10; i++) {
+			opBlock1 = shBlock + i;
+			os_sh_read(DRIVER, &opBlock1, i, (MemValue *)&pat, 10 - i);
+
+			for (uint8_t j = 0; j < 10 - i; j++) {
+				if (pat[j] != i + j + 1) {
+					TEST_FAILED_AND_HALT("Pattern mismatch (4)");
+				}
+			}
+		}
+
+		lcd_clear();
+		lcd_writeProgString(PSTR("OK"));
+		delayMs(10 * DEFAULT_OUTPUT_DELAY);
+	}
+	lcd_clear();
+
+	// SUCCESS
+	#if CONFIRM_REQUIRED
+	lcd_clear();
+	lcd_writeProgString(PSTR("  PRESS ENTER!  "));
+	os_waitForInput();
+	os_waitForNoInput();
+	#endif
+	TEST_PASSED;
+	lcd_line2();
+	lcd_writeProgString(PSTR(" WAIT FOR IDLE  "));
+	delayMs(DEFAULT_OUTPUT_DELAY * 6);
 }

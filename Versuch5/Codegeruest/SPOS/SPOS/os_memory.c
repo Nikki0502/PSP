@@ -560,11 +560,14 @@ MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
 	// falls auf privaten Mem aufgerugen
 	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
 		os_error("ReadOpen kein SH_MEM");
+		os_leaveCriticalSection();
 		return ptrAddr;
 	}
 	//gebe Rechenzeit ab, falls auf Shared Memory geschrieben wird oder bereits 4 Prozesse lesen
-	if(os_getMapEntry(heap,ptrAddr) == 0x9 || os_getMapEntry(heap,ptrAddr) == 0xE ){
+	if(os_getMapEntry(heap,ptrAddr) == 0x9 || os_getMapEntry(heap,ptrAddr) >= 0xE){
+
 		os_yield();
+		os_leaveCriticalSection();
 		return ptrAddr ;
 	}
     os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
@@ -588,11 +591,13 @@ MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
 	// falls auf privaten Mem aufgerugen
 	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
 		os_error("WriteOpen kein SH_MEM");
+		os_leaveCriticalSection();
 		return ptrAddr;
 	}
 	// falls nicht bereit ist zu schreiben
 	if(os_getMapEntry(heap,ptrAddr) != 0xA){
 		os_yield();
+		os_leaveCriticalSection();
 		return ptrAddr ;
 	}
 	// oeffnen fuer schreiben
@@ -664,14 +669,13 @@ void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue
 		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
 		return;
 	}
-	os_sh_readOpen(heap,ptr);
-	MemAddr start = os_getFirstByteOfChunk(heap,*ptr) + offset;
+	MemAddr start = os_sh_readOpen(heap,ptr)+offset;
 	MemValue zwischen;
 	MemAddr data = (MemAddr)dataDest; 
 	for(MemAddr i = start; i< start + length; i++){
 		zwischen = heap->driver->read(i);
 		heap->driver->write(data,zwischen);
-		dataDest++;
+		data++;
 	}
 	os_sh_close(heap,*ptr);
 }
