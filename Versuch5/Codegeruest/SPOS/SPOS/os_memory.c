@@ -564,11 +564,11 @@ MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
 		return ptrAddr;
 	}
 	//gebe Rechenzeit ab, falls auf Shared Memory geschrieben wird oder bereits 4 Prozesse lesen
-	if(os_getMapEntry(heap,ptrAddr) == 0x9 || os_getMapEntry(heap,ptrAddr) >= 0xE){
-
+	volatile MemValue test = os_getMapEntry(heap,ptrAddr);
+	if(os_getMapEntry(heap,ptrAddr) == 0x9 ||test == 0xE){
 		os_yield();
 		os_leaveCriticalSection();
-		return ptrAddr ;
+		return 0;
 	}
     os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
 	os_leaveCriticalSection();

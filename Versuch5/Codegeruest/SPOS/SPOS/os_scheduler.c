@@ -409,11 +409,19 @@ void os_yield(void) {
 	//Status des Global Interrupt Enable Bits (GIEB) des SREG-Registers sichern
 	uint8_t savedSERG = (SREG & 0b10000000);
 	//Geöffnete CS speichern
-	uint8_t currentOpenCS = criticalSectionCount-1;
+	uint8_t currentOpenCS = criticalSectionCount;
+	if(currentOpenCS!=0){
+		criticalSectionCount=0;	
+	}
+	TIMSK2 |= (1 << OCIE2A);
 	// ISR manuell aufrufen
 	TIMER2_COMPA_vect();
+	TIMSK2 &= ~(1 << OCIE2A);
 	//CS wiederherstellen
-	criticalSectionCount = currentOpenCS+1;
+	if(currentOpenCS!=0){
+		criticalSectionCount= currentOpenCS;
+	}
+	//criticalSectionCount = currentOpenCS;
 	//Global Interrupt Enable Bit wiederherstellen
 	if (savedSERG & 0b10000000) {
 		SREG |= 0b10000000;  // Setzen des MSB auf 1
