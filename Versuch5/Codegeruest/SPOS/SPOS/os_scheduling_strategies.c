@@ -38,16 +38,23 @@ void os_resetSchedulingInformation(SchedulingStrategy strategy) {
 		schedulingInfo.timeslice=current.priority;
 	}
 	if(strategy == OS_SS_INACTIVE_AGING){
-		for(int i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
+		for(uint8_t i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
 			schedulingInfo.age[i]=0;
 		}
 	}
 	if (strategy == OS_SS_MULTI_LEVEL_FEEDBACK_QUEUE){
-		for (int i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
+		for (uint8_t i =0; i< MAX_NUMBER_OF_PROCESSES; i++){
 			schedulingInfo.timeslices[i]=0;
 		}
-		for (int i =0; i< 4; i++){
+		for (uint8_t i =0; i< 4; i++){
 			pqueue_reset(&schedulingInfo.queues[i]);
+		}
+		// im process queues test steht das wir das hier schon hinzu fuehgen also in os_setSchedulingStrat
+		for(uint8_t i =1;i<MAX_NUMBER_OF_PROCESSES;i++){
+			if(os_getProcessSlot(i)->state!=OS_PS_UNUSED){
+				pqueue_append(MLFQ_getQueue(MLFQ_MapToQueue(os_getProcessSlot(i)->priority)),i);
+				schedulingInfo.timeslices[i] = MLFQ_getDefaultTimeslice(MLFQ_MapToQueue(os_getProcessSlot(i)->priority));	
+			}
 		}
 	}
 }
@@ -423,7 +430,7 @@ the first ProcessID.
 */
 ProcessID pqueue_getFirst (const ProcessQueue *queue){
 	if(pqueue_hasNext(queue)){
-		return queue->data[queue->tail%queue->size];
+		return queue->data[queue->tail];
 	}	
 	return 0;
 }
@@ -435,10 +442,8 @@ Parameters
 queue	The specific ProcessQueue.
 */
 void pqueue_dropFirst (ProcessQueue *queue){
-	queue->data[queue->tail%queue->size] = 0;
-	queue->tail++;
-	
-	
+	queue->data[queue->tail] = 0;
+	queue->tail=(queue->tail+1)%queue->size;
 }
 
 /*
@@ -449,8 +454,8 @@ queue	The ProcessQueue in which the pid should be appended.
 pid	The ProcessId to append.
 */
 void pqueue_append (ProcessQueue *queue, ProcessID pid){
-	queue->data[queue->head%queue->size] = pid;
-	queue->head++;
+	queue->data[queue->head] = pid;
+	queue->head=(queue->head+1)%queue->size;
 }
 
 /*
@@ -461,20 +466,20 @@ queue	The ProcessQueue from which the pid should be removed.
 pid	The ProcessId to remove.
 */
 void pqueue_removePID (ProcessQueue *queue, ProcessID pid){
-	uint8_t current = queue->tail%queue->size;
-	while(current != queue->head%queue->size){
+	uint8_t current = queue->tail;
+	while(current != queue->head){
 		if(queue->data[current] == pid){
 			queue->data[current] = 0;
-			uint8_t help = current+1%queue->size;
-			while(help%queue->size != queue->head%queue->size){
-				queue->data[current%queue->size] = queue->data[help%queue->size];
-				current ++;
-				help++;
+			uint8_t help = (current+1)%queue->size;
+			while(help != queue->head){
+				queue->data[current] = queue->data[help];
+				current= (current+1)%queue->size;
+				help = (help+1)%queue->size;
 			}
 			queue->data[queue->head%queue->size] = 0;
-			queue->head--;
+			queue->head=(queue->head-1)%queue->size;
 		}
-		current ++;
+		current= (current+1)%queue->size;
 		
 	}
 }
@@ -506,10 +511,13 @@ void MLFQ_removePID (ProcessID pid){
 bool MLFQ_hasPID(ProcessID pid, uint8_t queueID){
 	uint8_t currentQueue = queueID;
 	while(currentQueue<4){
-		for (uint8_t i = MLFQ_getQueue(currentQueue)->tail% MLFQ_getQueue(currentQueue)->size ; i< MLFQ_getQueue(currentQueue)->head% MLFQ_getQueue(currentQueue)->size;i++){
-			if(MLFQ_getQueue(currentQueue)->data[i]==pid){
+		uint8_t tail = MLFQ_getQueue(currentQueue)->tail;
+		uint8_t head = MLFQ_getQueue(currentQueue)->head;
+		while(tail!=head){
+			if(MLFQ_getQueue(currentQueue)->data[tail]==pid){
 				return true;
-			} 
+			}
+			tail = (tail+1) % MLFQ_getQueue(currentQueue)->size;
 		}
 		currentQueue +=1;
 	}
@@ -530,7 +538,7 @@ The next process to be executed determined on the basis of the even strategy.
 */
 ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 	uint8_t chosenQueueId = 0;
-	for (uint8_t i = 0 ; i < MAX_NUMBER_OF_PROCESSES; i++){
+	for (uint8_t i = 1 ; i < MAX_NUMBER_OF_PROCESSES; i++){
 		// falls nicht schon in einer queue
 		if(!MLFQ_hasPID(current,MLFQ_MapToQueue(processes[i].priority))){
 			pqueue_append(MLFQ_getQueue(MLFQ_MapToQueue(processes[i].priority)),current);
@@ -542,12 +550,15 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 	// Waehlt den ersten Proc in der ersten Queue aus der Ready ist
 	for (uint8_t i = 0;i<4;i++){
 		if(pqueue_hasNext(MLFQ_getQueue(i))){
-			for(uint8_t j = MLFQ_getQueue(i)->tail%MLFQ_getQueue(i)->size;j< MLFQ_getQueue(i)->head%MLFQ_getQueue(i)->size;j++){
-				ProcessID currProc = MLFQ_getQueue(i)->data[j];
+			uint8_t tail =  MLFQ_getQueue(i)->tail;
+			uint8_t head =  MLFQ_getQueue(i)->head;
+			while(tail!=head){
+				ProcessID currProc = MLFQ_getQueue(i)->data[tail];
 				if(processes[currProc].state == OS_PS_READY){
-					choosenPID = MLFQ_getQueue(i)->data[j];
+					choosenPID = MLFQ_getQueue(i)->data[tail];
 					break;
 				}
+				tail = (tail+1) % MLFQ_getQueue(i)->size;
 			}
 		}
 		// wenn einer gefunden wurde zum breaken

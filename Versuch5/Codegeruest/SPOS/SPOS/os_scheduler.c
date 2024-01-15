@@ -390,6 +390,7 @@ bool os_kill(ProcessID pid){
 		os_leaveCriticalSection();
 	}
 	//while(pid==currentProc){}
+
 	if(pid==currentProc){	
 		os_yield();
 	}
