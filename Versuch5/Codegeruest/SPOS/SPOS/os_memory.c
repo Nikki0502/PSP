@@ -198,7 +198,7 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 void os_free(Heap* heap, MemAddr addr){
 	//os_enterCriticalSection();
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);
-	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
+	uint16_t sizeOfChunk = 1;
 	//versucht speicher von anderen Process frei zugeben
 	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
 	if(ownerOfChunk>0x7){
@@ -207,12 +207,15 @@ void os_free(Heap* heap, MemAddr addr){
 	}
 	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
 		os_error("os_free:not the right MemChunk");
+		return;
 	}
-	else{
-		for (uint16_t i =0; i < sizeOfChunk ; i++){
-			os_setMapAddrValue(heap,(startOfChunk + i),0);
-		}
+	
+	os_setMapAddrValue(heap,(startOfChunk),0);
+	while(os_getMapEntry(heap,startOfChunk+sizeOfChunk) == 0xF){
+		os_setMapAddrValue(heap,(startOfChunk + sizeOfChunk),0);
+		sizeOfChunk++;
 	}
+	
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
 		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
@@ -220,12 +223,12 @@ void os_free(Heap* heap, MemAddr addr){
 				heap->allocFrameStart = i;
 				break;
 			}
+			if(i==heap->allocFrameEnd-1){
+				//reset
+				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+				heap->allocFrameEnd = os_getMapStart(heap);
+			}
 		}
-		/*
-		if(startOfChunk == heap->allocFrameStart){
-			heap->allocFrameStart = os_getUseStart(heap);
-		}
-		*/
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
 		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
@@ -233,12 +236,12 @@ void os_free(Heap* heap, MemAddr addr){
 				heap->allocFrameEnd = i;
 				break;
 			}
+			if(i==heap->allocFrameStart+1){
+				//reset
+				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+				heap->allocFrameEnd = os_getMapStart(heap);
+			}
 		}
-		/*
-		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
-		}
-		*/
 	}
 	//os_leaveCriticalSection();
 }
@@ -254,46 +257,51 @@ void os_freeProcessMemory (Heap *heap, ProcessID pid){
 	//os_enterCriticalSection();
 	//os_getUseStart(heap)+os_getUseSize(heap)
 	MemAddr startOfChunk = 0;
-	uint16_t sizeOfChunk = 0;
+	uint16_t sizeOfChunk = 1;
 	MemAddr current = heap->allocFrameStart;
 	while (current< heap->allocFrameEnd){
 		if(os_getMapEntry(heap,current)== pid){
+			sizeOfChunk = 1;
 			startOfChunk = current;
-			sizeOfChunk = os_getChunkSize(heap,startOfChunk);
-			os_setMapAddrValue(heap,startOfChunk,0);
-			for (uint16_t i =1; i < sizeOfChunk ; i++){
-				os_setMapAddrValue(heap,(startOfChunk + i),0);
+			os_setMapAddrValue(heap,(startOfChunk),0);
+			while(os_getMapEntry(heap,startOfChunk+sizeOfChunk) == 0xF){
+				os_setMapAddrValue(heap,(startOfChunk + sizeOfChunk),0);
+				sizeOfChunk++;
+			}
+			// Optimierungs Frame
+			if(startOfChunk == heap->allocFrameStart){
+				for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
+					if(os_getMapEntry(heap,i)!=0){
+						heap->allocFrameStart = i;
+						current = i-1;
+						break;
+					}
+					if(i==heap->allocFrameEnd-1){
+						//reset
+						heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+						heap->allocFrameEnd = os_getMapStart(heap);
+						current = heap->allocFrameEnd;
+					}
+				}
+			}
+			else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+				for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
+					if(os_getMapEntry(heap,i)!=0){
+						heap->allocFrameEnd = i;
+						break;
+					}
+					if(i==heap->allocFrameStart+1){
+						//reset
+						heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+						heap->allocFrameEnd = os_getMapStart(heap);
+					}
+				}
+				current = heap->allocFrameEnd;
 			}
 		}
 		current +=1;
 	}
-	// Optimierungs Frame
-	if(startOfChunk == heap->allocFrameStart){
-		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
-			if(os_getMapEntry(heap,i)!=0){
-				heap->allocFrameStart = i;
-				break;
-			}
-		}
-		/*
-		if(startOfChunk == heap->allocFrameStart){
-			heap->allocFrameStart = os_getUseStart(heap);
-		}
-		*/
-	}
-	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
-			if(os_getMapEntry(heap,i)!=0){
-				heap->allocFrameEnd = i;
-				break;
-			}
-		}
-		/*
-		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
-		}
-		*/
-	}
+
 	//os_leaveCriticalSection();
 }
 
@@ -511,18 +519,25 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
 	if(ownerOfChunk<=0x7){
 		os_error("os_sh_free:not a shared mem");
+		os_leaveCriticalSection();
 		return ;
 	}
-	if(ownerOfChunk!= 0x10){
+	while(ownerOfChunk != 0x10){
 		os_yield();
 	}
+	/*
 	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
-		os_error("os_sh_free:not the right MemChunk");
+		os_error("os_sh_free:notTheRightMemChunk");
 	}
+	
 	else{
 		for (uint16_t i =0; i < sizeOfChunk ; i++){
 			os_setMapAddrValue(heap,(startOfChunk + i),0);
 		}
+	}
+	*/
+	for (uint16_t i =0; i < sizeOfChunk ; i++){
+		os_setMapAddrValue(heap,(startOfChunk + i),0);
 	}
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
@@ -531,6 +546,11 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 				heap->allocFrameStart = i;
 				break;
 			}
+			if(i==heap->allocFrameEnd-1){
+				//reset
+				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+				heap->allocFrameEnd = os_getMapStart(heap);
+			}
 		}
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
@@ -538,6 +558,11 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 			if(os_getMapEntry(heap,i)!=0){
 				heap->allocFrameEnd = i;
 				break;
+			}
+			if(i==heap->allocFrameStart+1){
+				//reset
+				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
+				heap->allocFrameEnd = os_getMapStart(heap);
 			}
 		}
 	}
@@ -557,11 +582,12 @@ MemAddr is the dereferenced argument ptr after opening the chunk
 MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
 	os_enterCriticalSection();
 	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
+	MemAddr dereferencedPrt = *ptr;
 	// falls auf privaten Mem aufgerugen
 	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
 		os_error("ReadOpen kein SH_MEM");
 		os_leaveCriticalSection();
-		return ptrAddr;
+		return dereferencedPrt;
 	}
 	//gebe Rechenzeit ab, falls auf Shared Memory geschrieben wird oder bereits 4 Prozesse lesen
 	volatile MemValue test = os_getMapEntry(heap,ptrAddr);
@@ -570,7 +596,7 @@ MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
 	}
     os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
 	os_leaveCriticalSection();
-	return ptrAddr;
+	return dereferencedPrt;
 }
 	
 /*
@@ -586,11 +612,12 @@ MemAddr is the dereferenced argument ptr after opening the chunk
 MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
 	os_enterCriticalSection();
 	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
+	MemAddr dereferencedPrt = *ptr;
 	// falls auf privaten Mem aufgerugen
 	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
 		os_error("WriteOpen kein SH_MEM");
 		os_leaveCriticalSection();
-		return ptrAddr;
+		return dereferencedPrt;
 	}
 	// falls nicht bereit ist zu schreiben
 	while(os_getMapEntry(heap,ptrAddr) != 0xA){
@@ -599,7 +626,7 @@ MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
 	// oeffnen fuer schreiben
 	os_setMapAddrValue(heap,ptrAddr,0x9);
 	os_leaveCriticalSection();
-	return ptrAddr;
+	return dereferencedPrt;
 }
 	
 /*
@@ -634,20 +661,16 @@ dataSrc	Source of the data (this is always on internal SRAM)
 length	Specifies how many bytes of data shall be written
 */		
 void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){
-	if(os_getChunkSize(heap,*ptr)<(offset+length) || os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
+	if(os_getChunkSize(heap,*ptr)<(offset+length)){
 		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
 		return ;
 	}	
-	os_sh_writeOpen(heap,ptr);
-	MemAddr startCopy = os_getFirstByteOfChunk(heap,*ptr) + offset;
-	MemValue zwischen;
-	MemAddr data = (MemAddr) dataSrc;
-	for(MemAddr i = data; i< data + length; i++){
-		zwischen = heap->driver->read(i);
-		heap->driver->write(startCopy,zwischen);
-		startCopy++;
+	MemAddr derefPtr = os_sh_writeOpen(heap,ptr);
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
+	for(uint16_t i = 0; i<length;i++){
+		heap->driver->write(startOfChunk+offset+i,heap->driver->read(((MemAddr)dataSrc+i)));
 	}
-	os_sh_close(heap,*ptr);
+	os_sh_close(heap,startOfChunk);
 }
 	
 /*
@@ -661,19 +684,16 @@ dataDest	Destination where the data shall be copied to (this is always on intern
 length	Specifies how many bytes of data shall be read
 */		
 void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){
-	if(os_getChunkSize(heap,*ptr)<(offset+length) || os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
+	if(os_getChunkSize(heap,*ptr)<(offset+length) ){
 		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
 		return;
 	}
-	MemAddr start = os_sh_readOpen(heap,ptr)+offset;
-	MemValue zwischen;
-	MemAddr data = (MemAddr)dataDest; 
-	for(MemAddr i = start; i< start + length; i++){
-		zwischen = heap->driver->read(i);
-		heap->driver->write(data,zwischen);
-		data++;
+	MemAddr derefPtr = os_sh_readOpen(heap,ptr);
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
+	for(uint16_t i = 0; i<length;i++){
+		heap->driver->write((MemAddr)dataDest+i,heap->driver->read(startOfChunk+i+offset));
 	}
-	os_sh_close(heap,*ptr);
+	os_sh_close(heap,startOfChunk);
 }
 
 
