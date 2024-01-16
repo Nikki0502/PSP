@@ -575,6 +575,9 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 	if(choosenPID==0 && processes[current].state==OS_PS_BLOCKED){
 		choosenPID = current;
 	}
+	if(choosenPID==0){
+		return 0;
+	}
 	uint8_t blockedPIDQ ;
 	// blokced ready setzen
 	if(processes[current].state==OS_PS_BLOCKED){
@@ -588,9 +591,7 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 		pqueue_append(MLFQ_getQueue(blockedPIDQ),current);
 	}
 	// idle,kein anderer gefunden
-	if(choosenPID==0){
-		return 0;
-	}
+	
 	// in welcher queue sich der chosenProc befindet
 	for(uint8_t i = 0; i<4;i++){
 		if(MLFQ_hasPID(choosenPID,i)){
