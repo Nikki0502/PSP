@@ -290,8 +290,8 @@ ProcessID os_Scheduler_InactiveAging(const Process processes[], ProcessID curren
  */
 ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID current) {
 	ProcessID altCurrent = current;
-    // This is a presence task
 	uint16_t processInReady= 0;
+	
 	// um alle prozesse die ready sind heraus zu finden
 	for(int i = 1; i< MAX_NUMBER_OF_PROCESSES;i++){
 		if(processes[i].state== OS_PS_READY){
@@ -306,12 +306,12 @@ ProcessID os_Scheduler_RunToCompletion(const Process processes[], ProcessID curr
 		}
 		else{
 			// current ist blocked aber gibt keinen Ready process
-			os_getProcessSlot(current)->priority = OS_PS_READY;
+			os_getProcessSlot(current)->state = OS_PS_READY;
 			return current;
 		}
 	}
 	
-	if(processes[current].state == OS_PS_UNUSED){
+	if(processes[current].state == OS_PS_UNUSED || processes[current].state == OS_PS_BLOCKED){
 		current = os_Scheduler_Even(processes,current);
 	}
 	if(processes[altCurrent].state == OS_PS_BLOCKED){
