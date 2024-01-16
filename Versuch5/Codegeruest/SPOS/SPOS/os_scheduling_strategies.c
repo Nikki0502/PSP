@@ -354,7 +354,18 @@ Returns
 Number of timeslices.
 */
 uint8_t MLFQ_getDefaultTimeslice (uint8_t queueID){
-	return 2^queueID;
+	if(queueID==0){
+		return 1;
+	}
+	else if(queueID==1){
+		return 2;
+	}
+	else if(queueID==2){
+		return 4;
+	}
+	else{
+		return 8;
+	}
 }
 	
 /*
@@ -431,7 +442,7 @@ the first ProcessID.
 ProcessID pqueue_getFirst (const ProcessQueue *queue){
 	if(pqueue_hasNext(queue)){
 		return queue->data[queue->tail];
-	}	
+	}
 	return 0;
 }
 
@@ -537,14 +548,8 @@ Returns
 The next process to be executed determined on the basis of the even strategy.
 */
 ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
+	
 	uint8_t chosenQueueId = 0;
-	for (uint8_t i = 1 ; i < MAX_NUMBER_OF_PROCESSES; i++){
-		// falls nicht schon in einer queue
-		if(!MLFQ_hasPID(current,MLFQ_MapToQueue(processes[i].priority))){
-			pqueue_append(MLFQ_getQueue(MLFQ_MapToQueue(processes[i].priority)),current);
-			schedulingInfo.timeslices[i] = MLFQ_getDefaultTimeslice(MLFQ_MapToQueue(processes[i].priority));
-		}
-	}
 	ProcessID choosenPID = 0;
 	// scheduling
 	// Waehlt den ersten Proc in der ersten Queue aus der Ready ist
@@ -570,9 +575,17 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 	if(choosenPID==0 && processes[current].state==OS_PS_BLOCKED){
 		choosenPID = current;
 	}
+	uint8_t blockedPIDQ ;
 	// blokced ready setzen
 	if(processes[current].state==OS_PS_BLOCKED){
-		os_getProcessSlot(current)->priority = OS_PS_READY;
+		os_getProcessSlot(current)->state = OS_PS_READY;
+		for(uint8_t i = 0; i<4;i++){
+			if(MLFQ_hasPID(current,i)){
+				blockedPIDQ = i;
+			}
+		}
+		MLFQ_removePID(current);
+		pqueue_append(MLFQ_getQueue(blockedPIDQ),current);
 	}
 	// idle,kein anderer gefunden
 	if(choosenPID==0){
@@ -591,13 +604,54 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 		// remove old
 		MLFQ_removePID(choosenPID);
 		// add to new
-		pqueue_append(MLFQ_getQueue(chosenQueueId+1),choosenPID);
+		if(chosenQueueId==3){
+			pqueue_append(MLFQ_getQueue(chosenQueueId),choosenPID);
+			schedulingInfo.timeslices[choosenPID]= MLFQ_getDefaultTimeslice(chosenQueueId);
+		}
+		else{
+			pqueue_append(MLFQ_getQueue(chosenQueueId+1),choosenPID);	
+			schedulingInfo.timeslices[choosenPID]= MLFQ_getDefaultTimeslice(chosenQueueId+1);
+		}
 		// timeslices anpassen anhand der neuen queue
-		schedulingInfo.timeslices[choosenPID]= MLFQ_getDefaultTimeslice(chosenQueueId+1);
 	}
-	
 	return choosenPID;
 	
+	/*
+	volatile ProcessID chosenPID = 0;
+	volatile uint8_t chosenQID;
+	// suche nach ersten Proc in Ready
+	for(uint8_t i=0;i<4;i++){
+		chosenPID = pqueue_getFirst(MLFQ_getQueue(i));
+		chosenQID = i;
+		if(chosenPID!=0){break;}
+	}
+	if(chosenPID==0){
+		if(os_getProcessSlot(current)->state==OS_PS_BLOCKED){
+			chosenPID =current;
+		}
+		else{
+			return 0;
+		}
+	}
+	uint8_t timesll= schedulingInfo.timeslices[chosenPID];
+	schedulingInfo.timeslices[chosenPID] = timesll -1;
+	if(schedulingInfo.timeslices[chosenPID]==0){
+		pqueue_removePID(MLFQ_getQueue(chosenQID),chosenPID);
+		if(chosenQID==3){
+			pqueue_append(MLFQ_getQueue(chosenQID),chosenPID);
+			schedulingInfo.timeslices[chosenPID]= MLFQ_getDefaultTimeslice(chosenQID);
+		}
+		else{
+			pqueue_append(MLFQ_getQueue(chosenQID+1),chosenPID);
+			schedulingInfo.timeslices[chosenPID]= MLFQ_getDefaultTimeslice(chosenQID+1);
+		}
+		
+	}
+	if(os_getProcessSlot(current)->state==OS_PS_BLOCKED){
+		os_getProcessSlot(current)->state = OS_PS_RUNNING;
+	}
+	return chosenPID;
+	*/
 }
 
 

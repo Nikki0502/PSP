@@ -391,7 +391,7 @@ bool os_kill(ProcessID pid){
 	}
 	//while(pid==currentProc){}
 
-	if(pid==currentProc){	
+	while(pid==currentProc){	
 		os_yield();
 	}
 
