@@ -20,12 +20,19 @@
  * Nible Management
  */
 void setLowNibble (const Heap *heap, MemAddr addr, MemValue value){
+	if(value==1){
+		os_getCurrentProc();
+	}
+	
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
 		heap->driver->write(addr, ((getHighNibble(heap,addr)<<4) | value));
 	}
 }
 
 void setHighNibble (const Heap *heap, MemAddr addr, MemValue value){
+	if(value==1){
+		os_getCurrentProc();
+	}
 	if(addr < heap->startaddrUse && addr >= heap->startaddrMap){
 		heap->driver->write(addr, ((getLowNibble(heap,addr) | (value<<4))));
 	}
@@ -196,26 +203,24 @@ MemAddr os_malloc(Heap* heap, uint16_t size){
 }
 // Gibt Speicherplatz, der einem Prozess alloziiert wurde frei
 void os_free(Heap* heap, MemAddr addr){
-	//os_enterCriticalSection();
+	os_enterCriticalSection();
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,addr);
-	uint16_t sizeOfChunk = 1;
+	uint16_t sizeOfChunk = os_getChunkSize(heap,addr);
 	//versucht speicher von anderen Process frei zugeben
 	MemValue ownerOfChunk =os_getMapEntry(heap,startOfChunk);
 	if(ownerOfChunk>0x7){
 		os_error("os_free:not a shared mem");
+		os_leaveCriticalSection();
 		return ;
 	}
 	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
 		os_error("os_free:not the right MemChunk");
-		return;
 	}
-	
-	os_setMapAddrValue(heap,(startOfChunk),0);
-	while(os_getMapEntry(heap,startOfChunk+sizeOfChunk) == 0xF){
-		os_setMapAddrValue(heap,(startOfChunk + sizeOfChunk),0);
-		sizeOfChunk++;
+	else{
+		for (uint16_t i =0; i < sizeOfChunk ; i++){
+			os_setMapAddrValue(heap,(startOfChunk + i),0);
+		}
 	}
-	
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
 		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
@@ -223,12 +228,12 @@ void os_free(Heap* heap, MemAddr addr){
 				heap->allocFrameStart = i;
 				break;
 			}
-			if(i==heap->allocFrameEnd-1){
-				//reset
-				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-				heap->allocFrameEnd = os_getMapStart(heap);
-			}
 		}
+		/*
+		if(startOfChunk == heap->allocFrameStart){
+			heap->allocFrameStart = os_getUseStart(heap);
+		}
+		*/
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
 		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
@@ -236,14 +241,14 @@ void os_free(Heap* heap, MemAddr addr){
 				heap->allocFrameEnd = i;
 				break;
 			}
-			if(i==heap->allocFrameStart+1){
-				//reset
-				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-				heap->allocFrameEnd = os_getMapStart(heap);
-			}
 		}
+		/*
+		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
+		}
+		*/
 	}
-	//os_leaveCriticalSection();
+	os_leaveCriticalSection();
 }
 
 /*
@@ -254,55 +259,50 @@ heap	The heap on which we look for allocated memory
 pid	The ProcessID of the process that owns all the memory to be freed
 */
 void os_freeProcessMemory (Heap *heap, ProcessID pid){
-	//os_enterCriticalSection();
+	os_enterCriticalSection();
 	//os_getUseStart(heap)+os_getUseSize(heap)
 	MemAddr startOfChunk = 0;
-	uint16_t sizeOfChunk = 1;
+	uint16_t sizeOfChunk = 0;
 	MemAddr current = heap->allocFrameStart;
 	while (current< heap->allocFrameEnd){
 		if(os_getMapEntry(heap,current)== pid){
-			sizeOfChunk = 1;
 			startOfChunk = current;
-			os_setMapAddrValue(heap,(startOfChunk),0);
-			while(os_getMapEntry(heap,startOfChunk+sizeOfChunk) == 0xF){
-				os_setMapAddrValue(heap,(startOfChunk + sizeOfChunk),0);
-				sizeOfChunk++;
-			}
-			// Optimierungs Frame
-			if(startOfChunk == heap->allocFrameStart){
-				for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
-					if(os_getMapEntry(heap,i)!=0){
-						heap->allocFrameStart = i;
-						current = i-1;
-						break;
-					}
-					if(i==heap->allocFrameEnd-1){
-						//reset
-						heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-						heap->allocFrameEnd = os_getMapStart(heap);
-						current = heap->allocFrameEnd;
-					}
-				}
-			}
-			else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
-				for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
-					if(os_getMapEntry(heap,i)!=0){
-						heap->allocFrameEnd = i;
-						break;
-					}
-					if(i==heap->allocFrameStart+1){
-						//reset
-						heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-						heap->allocFrameEnd = os_getMapStart(heap);
-					}
-				}
-				current = heap->allocFrameEnd;
+			sizeOfChunk = os_getChunkSize(heap,startOfChunk);
+			os_setMapAddrValue(heap,startOfChunk,0);
+			for (uint16_t i =1; i < sizeOfChunk ; i++){
+				os_setMapAddrValue(heap,(startOfChunk + i),0);
 			}
 		}
 		current +=1;
 	}
-
-	//os_leaveCriticalSection();
+	// Optimierungs Frame
+	if(startOfChunk == heap->allocFrameStart){
+		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameStart = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk == heap->allocFrameStart){
+			heap->allocFrameStart = os_getUseStart(heap);
+		}
+		*/
+	}
+	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
+			if(os_getMapEntry(heap,i)!=0){
+				heap->allocFrameEnd = i;
+				break;
+			}
+		}
+		/*
+		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
+		}
+		*/
+	}
+	os_leaveCriticalSection();
 }
 
 /*
@@ -522,23 +522,13 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 		os_leaveCriticalSection();
 		return ;
 	}
-	while(ownerOfChunk != 0x10){
+	while(os_getMapEntry(heap,startOfChunk)!=0xA){
 		os_yield();
 	}
-	/*
-	if(ownerOfChunk != (MemValue)os_getCurrentProc()){
-		os_error("os_sh_free:notTheRightMemChunk");
-	}
-	
-	else{
-		for (uint16_t i =0; i < sizeOfChunk ; i++){
-			os_setMapAddrValue(heap,(startOfChunk + i),0);
-		}
-	}
-	*/
 	for (uint16_t i =0; i < sizeOfChunk ; i++){
 		os_setMapAddrValue(heap,(startOfChunk + i),0);
 	}
+	
 	// Optimierungs Frame
 	if(startOfChunk == heap->allocFrameStart){
 		for(uint16_t i = startOfChunk + sizeOfChunk; i < heap->allocFrameEnd; i++){
@@ -546,12 +536,12 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 				heap->allocFrameStart = i;
 				break;
 			}
-			if(i==heap->allocFrameEnd-1){
-				//reset
-				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-				heap->allocFrameEnd = os_getMapStart(heap);
-			}
 		}
+		/*
+		if(startOfChunk == heap->allocFrameStart){
+			heap->allocFrameStart = os_getUseStart(heap);
+		}
+		*/
 	}
 	else if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
 		for (uint16_t i = startOfChunk; i > heap->allocFrameStart; i--){
@@ -559,12 +549,12 @@ void os_sh_free (Heap *heap, MemAddr *addr){
 				heap->allocFrameEnd = i;
 				break;
 			}
-			if(i==heap->allocFrameStart+1){
-				//reset
-				heap->allocFrameStart = os_getMapStart(heap)+os_getMapSize(heap);
-				heap->allocFrameEnd = os_getMapStart(heap);
-			}
 		}
+		/*
+		if(startOfChunk+sizeOfChunk == heap->allocFrameEnd){
+			heap->allocFrameStart = os_getUseStart(heap)+os_getUseSize(heap);
+		}
+		*/
 	}
 	os_leaveCriticalSection();
 }
@@ -578,27 +568,30 @@ ptr	Pointer to an address of the chunk
 
 Returns
 MemAddr is the dereferenced argument ptr after opening the chunk
-*/	
+*/
 MemAddr os_sh_readOpen (const Heap *heap, const MemAddr *ptr){
 	os_enterCriticalSection();
-	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
 	MemAddr dereferencedPrt = *ptr;
+	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,dereferencedPrt);
+	
 	// falls auf privaten Mem aufgerugen
-	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
+	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,dereferencedPrt)) < 0x9){
 		os_error("ReadOpen kein SH_MEM");
 		os_leaveCriticalSection();
 		return dereferencedPrt;
 	}
 	//gebe Rechenzeit ab, falls auf Shared Memory geschrieben wird oder bereits 4 Prozesse lesen
-	volatile MemValue test = os_getMapEntry(heap,ptrAddr);
-	while(os_getMapEntry(heap,ptrAddr) == 0x9 ||test == 0xE){
+	while(os_getMapEntry(heap,ptrAddr) == 0x9 ||os_getMapEntry(heap,ptrAddr) == 0xE){
 		os_yield();
+		ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
 	}
-    os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
+	
+	os_setMapAddrValue(heap,ptrAddr,os_getMapEntry(heap,ptrAddr)+1);
+	dereferencedPrt = *ptr;
 	os_leaveCriticalSection();
 	return dereferencedPrt;
 }
-	
+
 /*
 Opens a chunk of shared memory to prepare a writing process
 
@@ -608,13 +601,13 @@ ptr	Pointer to an address of the chunk
 
 Returns
 MemAddr is the dereferenced argument ptr after opening the chunk
-*/		
+*/
 MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
 	os_enterCriticalSection();
-	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
 	MemAddr dereferencedPrt = *ptr;
+	MemAddr ptrAddr = os_getFirstByteOfChunk(heap,dereferencedPrt);
 	// falls auf privaten Mem aufgerugen
-	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,*ptr)) < 0x9){
+	if(os_getMapEntry(heap,os_getFirstByteOfChunk(heap,dereferencedPrt)) < 0x9){
 		os_error("WriteOpen kein SH_MEM");
 		os_leaveCriticalSection();
 		return dereferencedPrt;
@@ -622,20 +615,22 @@ MemAddr os_sh_writeOpen (const Heap *heap, const MemAddr *ptr){
 	// falls nicht bereit ist zu schreiben
 	while(os_getMapEntry(heap,ptrAddr) != 0xA){
 		os_yield();
+		ptrAddr = os_getFirstByteOfChunk(heap,*ptr);
 	}
 	// oeffnen fuer schreiben
 	os_setMapAddrValue(heap,ptrAddr,0x9);
+	dereferencedPrt = *ptr;
 	os_leaveCriticalSection();
 	return dereferencedPrt;
 }
-	
+
 /*
 Closes a chunk of shared memory to end an arbitrary access
 
 Parameters
 heap	The heap to be used
 addr	Address of the chunk (not the first one)
-*/		
+*/
 void os_sh_close (const Heap *heap, MemAddr addr){
 	os_enterCriticalSection();
 	MemAddr firstByteOfChunkt =os_getFirstByteOfChunk(heap,addr);
@@ -649,7 +644,7 @@ void os_sh_close (const Heap *heap, MemAddr addr){
 	}
 	os_leaveCriticalSection();
 }
-	
+
 /*
 Function used to write onto shared memory
 
@@ -659,20 +654,23 @@ ptr	Pointer to an address of the chunk to write to
 offset	An offset that refers to the beginning of the chunk
 dataSrc	Source of the data (this is always on internal SRAM)
 length	Specifies how many bytes of data shall be written
-*/		
+*/
 void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){
-	if(os_getChunkSize(heap,*ptr)<(offset+length)){
-		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
-		return ;
-	}	
 	MemAddr derefPtr = os_sh_writeOpen(heap,ptr);
+	volatile uint16_t chunksize =os_getChunkSize(heap,*ptr);
+	if(chunksize<(offset+length)){
+		os_error("Zurif WRITE");
+		return ;
+	}
+	//MemAddr derefPtr = os_sh_writeOpen(heap,ptr);
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	for(uint16_t i = 0; i<length;i++){
-		heap->driver->write(startOfChunk+offset+i,heap->driver->read(((MemAddr)dataSrc+i)));
+		heap->driver->write(startOfChunk+offset+i,intHeap->driver->read(((MemAddr)dataSrc+i)));
 	}
 	os_sh_close(heap,startOfChunk);
-}
 	
+}
+
 /*
 Function used to read from shared memory
 
@@ -682,20 +680,21 @@ ptr	Pointer to an address of the chunk to read from
 offset	An offset that refers to the beginning of the chunk
 dataDest	Destination where the data shall be copied to (this is always on internal SRAM)
 length	Specifies how many bytes of data shall be read
-*/		
+*/
 void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){
-	if(os_getChunkSize(heap,*ptr)<(offset+length) ){
-		os_error("Zurif auserhalp eine gemeinse Speicheeerberaisch");
+	MemAddr derefPtr = os_sh_readOpen(heap,ptr);
+	volatile uint16_t chunksize =os_getChunkSize(heap,*ptr);
+	if(chunksize<(offset+length) ){
+		os_error("Zurif Read");
 		return;
 	}
-	MemAddr derefPtr = os_sh_readOpen(heap,ptr);
+	//MemAddr derefPtr = os_sh_readOpen(heap,ptr);
 	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	for(uint16_t i = 0; i<length;i++){
-		heap->driver->write((MemAddr)dataDest+i,heap->driver->read(startOfChunk+i+offset));
+		intHeap->driver->write((MemAddr)dataDest+i,heap->driver->read(startOfChunk+i+offset));
 	}
 	os_sh_close(heap,startOfChunk);
 }
-
 
 
 

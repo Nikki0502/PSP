@@ -35,13 +35,13 @@ void os_spi_int(void){
  */
 uint8_t os_spi_send(uint8_t data){
 	// darf nicht unterbrochen werden
-	//os_enterCriticalSection();
+	os_enterCriticalSection();
 	// SPI Data Register (SPDR) setzen
 	SPDR = data; 
 	// warten auf ende der uebertragung singaliesert von SPIF 
 	while((SPSR & 0b10000000) == 0x00){} 
 	uint8_t byte_from_slave = SPDR;
-	//os_leaveCriticalSection();
+	os_leaveCriticalSection();
 	return byte_from_slave;
 }
 /*
@@ -51,9 +51,9 @@ uint8_t os_spi_send(uint8_t data){
  */
 uint8_t os_spi_receive() {
 	//darf nicht unterbrochen werden
-	//os_enterCriticalSection();
+	os_enterCriticalSection();
 	// idk warum das so funkt aber laut aufgaben stellung und doxxygen sollte das richtig sein 
 	uint8_t byte_from_slave = os_spi_send(0xFF);
-	//os_leaveCriticalSection();
+	os_leaveCriticalSection();
 	return byte_from_slave;
 }
