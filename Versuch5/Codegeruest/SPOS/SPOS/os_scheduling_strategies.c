@@ -578,7 +578,7 @@ ProcessID os_Scheduler_MLFQ (const Process processes[], ProcessID current){
 	if(choosenPID==0){
 		return 0;
 	}
-	uint8_t blockedPIDQ ;
+	uint8_t blockedPIDQ =0 ;
 	// blokced ready setzen
 	if(processes[current].state==OS_PS_BLOCKED){
 		os_getProcessSlot(current)->state = OS_PS_READY;

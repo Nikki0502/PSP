@@ -657,13 +657,15 @@ length	Specifies how many bytes of data shall be written
 */
 void os_sh_write (const Heap *heap, const MemAddr *ptr, uint16_t offset, const MemValue *dataSrc, uint16_t length){
 	MemAddr derefPtr = os_sh_writeOpen(heap,ptr);
-	volatile uint16_t chunksize =os_getChunkSize(heap,*ptr);
+	volatile uint16_t chunksize =os_getChunkSize(heap,derefPtr);
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	if(chunksize<(offset+length)){
+		os_sh_close(heap,startOfChunk);
 		os_error("Zurif WRITE");
 		return ;
 	}
 	//MemAddr derefPtr = os_sh_writeOpen(heap,ptr);
-	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
+	//MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	for(uint16_t i = 0; i<length;i++){
 		heap->driver->write(startOfChunk+offset+i,intHeap->driver->read(((MemAddr)dataSrc+i)));
 	}
@@ -683,13 +685,15 @@ length	Specifies how many bytes of data shall be read
 */
 void os_sh_read (const Heap *heap, const MemAddr *ptr, uint16_t offset, MemValue *dataDest, uint16_t length){
 	MemAddr derefPtr = os_sh_readOpen(heap,ptr);
-	volatile uint16_t chunksize =os_getChunkSize(heap,*ptr);
+	volatile uint16_t chunksize =os_getChunkSize(heap,derefPtr);
+	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	if(chunksize<(offset+length) ){
+		os_sh_close(heap,startOfChunk);
 		os_error("Zurif Read");
 		return;
 	}
 	//MemAddr derefPtr = os_sh_readOpen(heap,ptr);
-	MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
+	//MemAddr startOfChunk = os_getFirstByteOfChunk(heap,derefPtr);
 	for(uint16_t i = 0; i<length;i++){
 		intHeap->driver->write((MemAddr)dataDest+i,heap->driver->read(startOfChunk+i+offset));
 	}
