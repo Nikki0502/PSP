@@ -1,0 +1,12 @@
+<map id="rfid_receive" name="rfid_receive">
+<area shape="rect" id="node1" title="Receives one RFID&#45;Tag. This is the only one external called function." alt="" coords="5,56,104,83"/>
+<area shape="rect" id="node2" href="$util_8c.html#a6203c4722e9cbe1542b6ccbe98362dd2" title="Waits for some milliseconds." alt="" coords="182,5,259,32"/>
+<area shape="rect" id="node5" href="$lcd_8c.html#ad235a86241458b1e7b8771688bfdaf9a" title="Clear all data from display." alt="" coords="181,56,261,83"/>
+<area shape="rect" id="node8" href="$lcd_8c.html#ac474e7328f850a8b9af9de57df93e2f3" title="Write one hexadecimal byte." alt="" coords="152,107,289,133"/>
+<area shape="rect" id="node3" href="$util_8c.html#a0ed4ceac216999d297c20ed56cd2f2e0" title="Precise system time in ms." alt="" coords="337,5,516,32"/>
+<area shape="rect" id="node4" href="$util_8c.html#aa7568de3711b151bbc57bb3517a5cb0a" title=" " alt="" coords="564,5,755,32"/>
+<area shape="rect" id="node6" href="$lcd_8c.html#acb116d89c358367b8fd1164120d320e3" title="Send command to LCD." alt="" coords="370,56,483,83"/>
+<area shape="rect" id="node7" href="$lcd_8c.html#a26a89cb41bb1496462fda420cbe79a07" title=" " alt="" coords="596,56,723,83"/>
+<area shape="rect" id="node9" href="$lcd_8c.html#a01b53b89b0c268d2324d86f3fe33405d" title="Write a half&#45;byte (a nibble)" alt="" coords="352,107,501,133"/>
+<area shape="rect" id="node10" href="$lcd_8c.html#a93cd5600fa3b27381a4cf57d21f27ebf" title="Write one character." alt="" coords="604,107,715,133"/>
+</map>
