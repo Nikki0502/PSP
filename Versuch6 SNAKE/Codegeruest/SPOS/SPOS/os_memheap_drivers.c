@@ -57,7 +57,7 @@ void os_initHeap(Heap* heap){
 
 void os_initHeaps(void){
 	os_initHeap(intHeap);
-	os_initHeap(extHeap);
+	//os_initHeap(extHeap);
 }
 
 size_t os_getHeapListLength(void){
