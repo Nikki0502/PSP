@@ -4,13 +4,19 @@
  *  \date     2019
  */
 #include "led_draw.h"
-
+#include "led_paneldriver.h"
 #include "led_patterns.h"
 #include "util.h"
 
 //! \brief Distributes bits of given color's channels r, g and b on layers of framebuffer
 void draw_setPixel(uint8_t x, uint8_t y, Color color) {
-#error IMPLEMENT STH. HERE
+	uint8_t value = 0b0000000;
+	if(y<16){
+		os_getFramebufferEntry()
+	}
+	else{
+		
+	}
     return;
 }
 

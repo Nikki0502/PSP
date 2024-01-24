@@ -20,4 +20,8 @@ void panel_stopTimer(void);
 
 //! Initalizes interrupt timer
 void panel_initTimer(void);
+
+uint8_t os_getFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y);
+void os_setFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y, uint8_t value);
+
 #endif

@@ -30,8 +30,8 @@ uint8_t os_getInput(void) {
  *  Initializes DDR and PORT for input
  */
 void os_initInput() {
-  DDRC &= 0b00111100;
-  PORTC |= 0b11000011;
+  DDRC &= 0b01111111;
+  PORTC |= 0b10000000;
 }
 
 /*!
