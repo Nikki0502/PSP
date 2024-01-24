@@ -10,15 +10,49 @@
 
 //! \brief Distributes bits of given color's channels r, g and b on layers of framebuffer
 void draw_setPixel(uint8_t x, uint8_t y, Color color) {
-	uint8_t value = 0b0000000;
+	uint8_t test;
+	uint8_t value = 0b00000000;
 	if(y<16){
-		os_getFramebufferEntry()
+		for(uint8_t i = 0; i<2; i++){
+			test = (1 << (7-i));
+			if((color.b & test) == test){
+				value |= 0b00000100;
+			}
+			
+			if((color.g & test) == test){
+				value |= 0b00000010;
+			}
+			
+			if((color.r & test) == test){
+				value |= 0b00000001;
+			}
+			
+			uint8_t entry = os_getFramebufferEntry(i,x,y) & 0b11110000;
+			value |= entry;
+			os_setFramebufferEntry(i,x,y,value);
+		}
 	}
 	else{
-		
+		for(uint8_t i = 0; i<2; i++){
+			test = (1 << (7-i));
+			if((color.b & test) == test){
+				value |= 0b00100000;
+			}
+			
+			if((color.g & test) == test){
+				value |= 0b00010000;
+			}
+			if((color.r & test) == test){
+				value |= 0b00001000;
+			}
+			
+			uint8_t entry = os_getFramebufferEntry(i,x,y) & 0b00001111;
+			value |= entry;
+			os_setFramebufferEntry(i,x,y,value);
+		}
 	}
-    return;
-}
+	
+	}
 
 //! \brief Reconstructs RGB-Color from layers of framebuffer
 Color draw_getPixel(uint8_t x, uint8_t y) {
