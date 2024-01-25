@@ -34,7 +34,7 @@
     <com_atmel_avrdbg_tool_jtagice3plus>
       <ToolOptions>
         <InterfaceProperties>
-          <JtagDbgClock>3927836</JtagDbgClock>
+          <JtagDbgClock>3820817</JtagDbgClock>
         </InterfaceProperties>
         <InterfaceName>JTAG</InterfaceName>
       </ToolOptions>
@@ -43,7 +43,7 @@
       <ToolName>JTAGICE3</ToolName>
     </com_atmel_avrdbg_tool_jtagice3plus>
     <avrtoolinterface>JTAG</avrtoolinterface>
-    <avrtoolinterfaceclock>3927836</avrtoolinterfaceclock>
+    <avrtoolinterfaceclock>3820817</avrtoolinterfaceclock>
     <com_atmel_avrdbg_tool_simulator>
       <ToolOptions>
         <InterfaceProperties>
@@ -204,30 +204,6 @@
     <Compile Include="os_input.h">
       <SubType>compile</SubType>
     </Compile>
-    <Compile Include="os_memheap_drivers.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_memheap_drivers.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_memory.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_memory.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_memory_strategies.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_memory_strategies.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_mem_drivers.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_mem_drivers.h">
-      <SubType>compile</SubType>
-    </Compile>
     <Compile Include="os_process.c">
       <SubType>compile</SubType>
     </Compile>
@@ -244,12 +220,6 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="os_scheduling_strategies.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_spi.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="os_spi.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="os_taskman.c">

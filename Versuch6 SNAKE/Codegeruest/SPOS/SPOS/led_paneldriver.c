@@ -15,17 +15,14 @@
 // Globales Led Matrix Array 
 // Der Framebuffer ist dann ein dreidimensionales Array: der erste Index selektiert die Ebene, der Zweite die Doppelzeile, der Dritte die Spalte.
 // Eintrag in dem Array - - B2 G2 R2 B1 G1 R1
-uint8_t anzahlEbenen = 2;
 uint8_t frambuffer[2][16][32];
 
 uint8_t os_getFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y){
 	return frambuffer[ebene][y][x];
 }
 void os_setFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y, uint8_t value){
-	frambuffer[ebene][y][x]=value; 
+	frambuffer[ebene][y][x]=value;
 }
-
-//!!! WAS MACHT MAN DAMIT???
 
 //! \brief Enable compare match interrupts for Timer 1
 void panel_startTimer() {
@@ -54,6 +51,7 @@ void panel_initTimer() {
 // Bei Port C kucken wegen Buttons
 //! \brief Initializes used ports of panel
 void panel_init(){
+	panel_startTimer();
 	DDRA |= 0b00001111;
 	DDRC |= 0b01000011;
 	DDRD |= 0b00111111;
@@ -64,7 +62,7 @@ uint8_t momDoppelzeile = 0;
 
 // Save DoppelSpalte im Latch
 void panel_latchDisable(){
-	PORTC &= 0b11111101;
+	PORTC &= 0b111111101;
 }
 void panel_latchEnable(){
 	PORTC |= 0b00000010;
@@ -78,16 +76,18 @@ void panel_outputEnable(){
 }
 // ColumnSelect oder halt fertig mit der Spalte
 void panel_CLK(){
-	PORTC |= 0b01000000;
-	PORTC &= 0b10111111;
+	PORTC |= 0b00000001;
+	PORTC &= 0b11111110;
 }
 // RowSelect
 void panel_setAddress(uint8_t doppelZeile){
-	PORTA |= doppelZeile;
+	uint8_t test = (PORTA & 0b11100000);
+	doppelZeile = doppelZeile + test;
+	PORTA = doppelZeile;
 }
 // Farb auswahl gesamte Zeile 
 void panel_setOutput(uint8_t ebene, uint8_t doppelZeile){
-	for(uint8_t i =0;i<32;i++){
+	for(uint8_t i=0; i<32; i++){
 		PORTD = frambuffer[ebene][doppelZeile][i];
 		panel_CLK();
 	}
@@ -105,6 +105,7 @@ LEDs ausgegeben werden
 */
 //! \brief ISR to refresh LED panel, trigger 1 compare match interrupts
 ISR(TIMER1_COMPA_vect) {
+	panel_stopTimer();
 	//fuck this code
 	while(momDoppelzeile<16){
 		panel_setAddress(momDoppelzeile);
@@ -139,4 +140,5 @@ ISR(TIMER1_COMPA_vect) {
 	}
 	momDoppelzeile = 0;
 	momEbene = 0;
+	panel_startTimer();
 }

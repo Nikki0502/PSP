@@ -52,7 +52,7 @@ void draw_setPixel(uint8_t x, uint8_t y, Color color) {
 		}
 	}
 	
-	}
+}
 
 //! \brief Reconstructs RGB-Color from layers of framebuffer
 Color draw_getPixel(uint8_t x, uint8_t y) {

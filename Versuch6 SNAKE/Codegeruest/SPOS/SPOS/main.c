@@ -5,6 +5,7 @@
 #include "util.h"
 #include "os_memheap_drivers.h" 
 #include "os_scheduling_strategies.h"
+#include "led_paneldriver.h"
 
 #include <avr/pgmspace.h>
 
@@ -23,12 +24,8 @@ int main(void) {
     delayMs(600);
     lcd_clear();
 	
-	//Fehler uberpruefung vom heap
-	if( (uint16_t)(&__heap_start) > HEAPOFFSET+0x100){
-		os_error("HeapStart ist groesser als das Offset");
-	}
-	//heap init 
-	os_initHeaps();
+	panel_initTimer();
+	panel_init();
 	os_initSchedulingInformation();
 
     // Start the operating system
