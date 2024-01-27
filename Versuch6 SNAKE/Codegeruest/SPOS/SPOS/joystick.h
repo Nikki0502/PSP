@@ -1,3 +1,8 @@
+#ifndef _JOYSTICK_H
+#define _JOYSTICK_H
+
+#include <stdbool.h>
+
 typedef enum Direction {
 	JS_LEFT,
 	JS_RIGHT,
@@ -11,3 +16,5 @@ uint16_t js_getHorizontal();
 uint16_t js_getVertical();
 Direction js_getDirection();
 bool os_getButton();
+
+#endif
