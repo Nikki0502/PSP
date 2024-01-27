@@ -8,71 +8,111 @@
 #include "led_patterns.h"
 #include "util.h"
 
+uint8_t frambuffer[2][16][32];
+
+uint8_t colorToRGB(Color color,uint8_t Ebene){
+	uint8_t rgbValue = 0;
+	if(((color.r>>(7-Ebene))&0b00000001)==0b00000001){
+		rgbValue |= 0b0000001;
+	}
+	if(((color.g>>(7-Ebene))&0b00000001)==0b00000001){
+		rgbValue |= 0b0000010;
+	}
+	if(((color.b>>(7-Ebene))&0b00000001)==0b00000001){
+		rgbValue |= 0b0000100;
+	}
+	return rgbValue;
+		
+}
+Color rgbToColor(uint8_t rgbValue,uint8_t Ebene){
+	Color color = (Color){.r = 0x00, .g = 0x00, .b = 0x00};;
+	if((rgbValue&0b00000001)==1){
+		color.r=0b00000001<<(7-Ebene);
+	}
+	if(((rgbValue&0b00000010)>>1)==1){
+		color.g=0b00000001<<(7-Ebene);
+	}
+	if(((rgbValue&0b00000100)>>2)==1){
+		color.b=0b00000001<<(7-Ebene);
+	}
+	return color;
+}
+
+
 //! \brief Distributes bits of given color's channels r, g and b on layers of framebuffer
 void draw_setPixel(uint8_t x, uint8_t y, Color color) {
-	uint8_t test;
-	uint8_t value = 0b00000000;
-	if(y<16){
-		for(uint8_t i = 0; i<2; i++){
-			test = (1 << (7-i));
-			if((color.b & test) == test){
-				value |= 0b00000100;
-			}
-			
-			if((color.g & test) == test){
-				value |= 0b00000010;
-			}
-			
-			if((color.r & test) == test){
-				value |= 0b00000001;
-			}
-			
-			uint8_t entry = os_getFramebufferEntry(i,x,y) & 0b11110000;
-			value |= entry;
-			os_setFramebufferEntry(i,x,y,value);
+	for(uint8_t i=0;i<2;i++){
+		uint8_t rgbValue = colorToRGB(color,i);
+		if(y<16){
+			frambuffer[i][y][x]=(frambuffer[i][y][x]&0b00111000)+(rgbValue);
+		}
+		else{
+			frambuffer[i][y-16][x]=(frambuffer[i][y-16][x]&0b00000111)+(rgbValue<<3);
 		}
 	}
-	else{
-		for(uint8_t i = 0; i<2; i++){
-			test = (1 << (7-i));
-			if((color.b & test) == test){
-				value |= 0b00100000;
-			}
-			
-			if((color.g & test) == test){
-				value |= 0b00010000;
-			}
-			if((color.r & test) == test){
-				value |= 0b00001000;
-			}
-			
-			uint8_t entry = os_getFramebufferEntry(i,x,y) & 0b00001111;
-			value |= entry;
-			os_setFramebufferEntry(i,x,y,value);
-		}
-	}
-	
 }
 
 //! \brief Reconstructs RGB-Color from layers of framebuffer
 Color draw_getPixel(uint8_t x, uint8_t y) {
-#warning IMPLEMENT STH. HERE
-    return (Color){};
+	volatile Color momColor = (Color){.r = 0x00, .g = 0x00, .b = 0x00};
+	volatile Color totColor = (Color){.r = 0x00, .g = 0x00, .b = 0x00};
+	for(uint8_t i=0;i<2;i++){
+		if(y<16){
+			momColor = rgbToColor(frambuffer[i][y][x],i);
+		}
+		else{
+			momColor = rgbToColor((frambuffer[i][y-16][x])>>3,i);
+		}
+		totColor.r += momColor.r;
+		totColor.g += momColor.g;
+		totColor.b += momColor.b;
+	}
+	return totColor;
 }
 
 //! \brief Fills whole panel with given color
 void draw_fillPanel(Color color) {
-#warning IMPLEMENT STH. HERE
+	for(uint8_t y=0;y<32;y++){
+		for(uint8_t x=0;x<32;x++){
+			for(uint8_t i=0;i<2;i++){
+				uint8_t rgbValue = colorToRGB(color,i);
+				if(y<16){
+					frambuffer[i][y][x]=(frambuffer[i][y][x]&0b00111000)+(rgbValue);
+				}
+				else{
+					frambuffer[i][y-16][x]=(frambuffer[i][y-16][x]&0b00000111)+(rgbValue<<3);
+				}
+			}
+		}
+	}
 }
 
 //! \brief Sets every pixel's color to black
 void draw_clearDisplay() {
-#warning IMPLEMENT STH. HERE
+	for(uint8_t i = 0; i < 2; i++){
+		for(uint8_t j = 0; j < 16; j++){
+			for(uint8_t k = 0; k < 32; k++){
+				frambuffer[i][j][k]=0;
+			}
+		}
+	}
 }
 
 //! \brief Draws Rectangle
 void draw_filledRectangle(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2, Color color) {
-#warning IMPLEMENT STH. HERE
+	for(uint8_t y=y1;y<y2;y++){
+		for(uint8_t x=x1;x<x2;x++){
+			for(uint8_t i=0;i<2;i++){
+				uint8_t rgbValue = colorToRGB(color,i);
+				if(y<16){
+					frambuffer[i][y][x]=(frambuffer[i][y][x]&0b00111000)+(rgbValue);
+				}
+				else{
+					frambuffer[i][y-16][x]=(frambuffer[i][y-16][x]&0b00000111)+(rgbValue<<3);
+				}
+			}
+		}
+	}
 }
 
 

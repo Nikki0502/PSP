@@ -12,17 +12,9 @@
 #include <stdbool.h>
 #include <util/delay.h>
 
-// Globales Led Matrix Array 
-// Der Framebuffer ist dann ein dreidimensionales Array: der erste Index selektiert die Ebene, der Zweite die Doppelzeile, der Dritte die Spalte.
-// Eintrag in dem Array - - B2 G2 R2 B1 G1 R1
+
 uint8_t frambuffer[2][16][32];
 
-uint8_t os_getFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y){
-	return frambuffer[ebene][y][x];
-}
-void os_setFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y, uint8_t value){
-	frambuffer[ebene][y][x]=value;
-}
 
 //! \brief Enable compare match interrupts for Timer 1
 void panel_startTimer() {

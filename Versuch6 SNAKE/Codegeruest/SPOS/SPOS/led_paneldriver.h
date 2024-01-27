@@ -21,7 +21,10 @@ void panel_stopTimer(void);
 //! Initalizes interrupt timer
 void panel_initTimer(void);
 
-uint8_t os_getFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y);
-void os_setFramebufferEntry(uint8_t ebene, uint8_t x, uint8_t y, uint8_t value);
+// Globales Led Matrix Array
+// Der Framebuffer ist dann ein dreidimensionales Array: der erste Index selektiert die Ebene, der Zweite die Doppelzeile, der Dritte die Spalte.
+// Eintrag in dem Array - - B2 G2 R2 B1 G1 R1
+extern uint8_t frambuffer[2][16][32];
+
 
 #endif
