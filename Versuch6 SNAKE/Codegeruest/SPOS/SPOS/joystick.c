@@ -137,9 +137,9 @@ bool js_getButton() Diese Funktion gibt true zurück, wenn gerade auf den Joystic
 gedrückt wird, d.h. der in ihm verbaute Schalter geschlossen ist. Andernfalls gibt diese
 Funktion false zurück.
 */
-bool os_getButton(){
+bool js_getButton(){
 	// Buttons sollten reversed sein. zu mindestens waren das die alten
-	return ((~PINC & 0b10000000)>>7)==1;
+	return ((~PINA & 0b10000000)>>7)==1;
 }
 
 

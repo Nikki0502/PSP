@@ -15,6 +15,6 @@ void js_init();
 uint16_t js_getHorizontal();
 uint16_t js_getVertical();
 Direction js_getDirection();
-bool os_getButton();
+bool js_getButton();
 
 #endif

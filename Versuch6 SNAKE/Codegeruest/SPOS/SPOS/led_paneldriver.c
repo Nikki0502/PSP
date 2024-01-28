@@ -51,6 +51,7 @@ void panel_init(){
 
 uint8_t momEbene = 0;
 uint8_t momDoppelzeile = 0;
+uint8_t momRound = 0;
 
 // Save DoppelSpalte im Latch
 void panel_latchDisable(){
@@ -99,6 +100,7 @@ LEDs ausgegeben werden
 ISR(TIMER1_COMPA_vect) {
 	panel_stopTimer();
 	//fuck this code
+	/*
 	while(momDoppelzeile<16){
 		panel_setAddress(momDoppelzeile);
 		panel_setOutput(momEbene,momDoppelzeile);
@@ -106,6 +108,7 @@ ISR(TIMER1_COMPA_vect) {
 		panel_latchDisable();
 		panel_outputEnable();
 		panel_outputDisable();
+		momEbene++;
 		momDoppelzeile ++;
 	}
 	momDoppelzeile = 0;
@@ -132,5 +135,52 @@ ISR(TIMER1_COMPA_vect) {
 	}
 	momDoppelzeile = 0;
 	momEbene = 0;
+	*/
+	/*
+	panel_setAddress(momDoppelzeile);
+	panel_setOutput(momEbene,momDoppelzeile);
+	panel_latchEnable();
+	panel_latchDisable();
+	panel_outputEnable();
+	panel_outputDisable();
+	momEbene++;
+	panel_setAddress(momDoppelzeile);
+	panel_setOutput(momEbene,momDoppelzeile);
+	panel_latchEnable();
+	panel_latchDisable();
+	panel_outputEnable();
+	panel_outputDisable();
+	momEbene--;
+	panel_setAddress(momDoppelzeile);
+	panel_setOutput(momEbene,momDoppelzeile);
+	panel_latchEnable();
+	panel_latchDisable();
+	panel_outputEnable();
+	panel_outputDisable();
+	momDoppelzeile ++;
+	if(momDoppelzeile==16){
+		momDoppelzeile = 0;
+	}
+	*/
+	panel_setAddress(momDoppelzeile);
+	panel_setOutput(momEbene,momDoppelzeile);
+	panel_latchEnable();
+	panel_latchDisable();
+	panel_outputEnable();
+	panel_outputDisable();
+	momDoppelzeile ++;
+	if(momDoppelzeile==16){
+		momDoppelzeile = 0;
+		if(momEbene==0){
+			momRound++;
+		}
+		if(momEbene==1){
+			momEbene--;
+		}
+		if(momRound==2&&momEbene==0){
+			momRound=0;
+			momEbene++;
+		}
+	}
 	panel_startTimer();
 }
