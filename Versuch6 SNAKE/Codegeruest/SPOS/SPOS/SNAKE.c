@@ -82,7 +82,7 @@ Direction getDirection(uint16_t snakeBit){
 void drawSnake(){
 	pos_SnakeHead.cord_X=16;
 	pos_SnakeHead.cord_Y=16;
-	snakeBitHead =7;
+	snakeBitHead =5;
 	for(uint8_t i =0; i<=snakeBitHead; i++){
 		setDirection(i,JS_RIGHT);
 		draw_setPixel(pos_SnakeHead.cord_X-i,pos_SnakeHead.cord_Y,COLOR_GREEN);
@@ -96,6 +96,17 @@ void spawnFood(){
 	draw_setPixel(pos_Food.cord_X,pos_Food.cord_Y,COLOR_RED);
 }
 
+void deathMessage(){
+	draw_letter('Y',7,5,COLOR_RED,true,true);
+	draw_letter('O',13,5,COLOR_RED,true,true);
+	draw_letter('U',19,5,COLOR_RED,true,true);
+	draw_letter('D',5,14,COLOR_RED,true,true);
+	draw_letter('I',10,14,COLOR_RED,true,true);
+	draw_letter('E',15,14,COLOR_RED,true,true);
+	draw_letter('D',22,14,COLOR_RED,true,true);
+	delayMs(700);
+}
+
 void resetGame(){
 	draw_clearDisplay();
 	snakeBitTail = 0;
@@ -105,6 +116,8 @@ void resetGame(){
 	for(uint8_t i=0;i<255;i++){
 		snakeRingbuffer[i]=0;
 	}
+	deathMessage();
+	draw_clearDisplay();
 	drawSnake();
 	spawnFood();
 }
@@ -131,7 +144,7 @@ bool checkGameOver(){
 
 void checkEatenFood(){
 	if(pos_SnakeHead.cord_X==pos_Food.cord_X&&pos_SnakeHead.cord_Y==pos_Food.cord_Y){
-		snakeBitHead++;
+		snakeBitHead=(snakeBitHead+1)%1024;
 		momScore ++;
 		spawnFood();
 		if(momScore>highScore){
@@ -139,14 +152,8 @@ void checkEatenFood(){
 		}
 	}
 	else{
-		snakeBitHead++;
-		snakeBitTail++;
-	}
-	if(snakeBitHead==256){
-		snakeBitHead =0;
-	}
-	if(snakeBitTail==256){
-		snakeBitTail =0;
+		snakeBitHead=(snakeBitHead+1)%1024;
+		snakeBitTail=(snakeBitTail+1)%1024;
 	}
 	setDirection(snakeBitHead,currentDirection);
 }
@@ -155,6 +162,7 @@ Position posOfLastSnakeBit(){
 	Position posLastSnakeBit;
 	posLastSnakeBit.cord_X = pos_SnakeHead.cord_X;
 	posLastSnakeBit.cord_Y = pos_SnakeHead.cord_Y;
+	/*
 	for(uint16_t i = snakeBitHead; i>snakeBitTail-1; i--){
 		switch (getDirection(i)){
 			case JS_DOWN:posLastSnakeBit.cord_Y--; break;
@@ -163,6 +171,25 @@ Position posOfLastSnakeBit(){
 			case JS_RIGHT:posLastSnakeBit.cord_X--; break;
 			default:draw_setPixel(0,0,COLOR_YELLOW);break;
 		}
+	}
+	*/
+	uint16_t testHead = snakeBitHead;
+	uint16_t testTail = snakeBitTail;
+	while(testHead!=testTail-1){
+		switch (getDirection(testHead)){
+			case JS_DOWN:posLastSnakeBit.cord_Y--; break;
+			case JS_UP:posLastSnakeBit.cord_Y++; break;
+			case JS_LEFT:posLastSnakeBit.cord_X++; break;
+			case JS_RIGHT:posLastSnakeBit.cord_X--; break;
+			default:draw_setPixel(0,0,COLOR_YELLOW);break;
+		}
+		if(testHead!=0){
+			testHead = (testHead-1)%1024;
+		}
+		else{
+			testHead = 1024;
+		}
+
 	}
 	return posLastSnakeBit;
 }
@@ -232,13 +259,21 @@ void drawSnakeAfterMenu(){
 	posSnakeBit.cord_X = pos_SnakeHead.cord_X;
 	posSnakeBit.cord_Y = pos_SnakeHead.cord_Y;
 	draw_setPixel(pos_SnakeHead.cord_X,pos_SnakeHead.cord_Y,COLOR_GREEN);
-	for(uint16_t i = snakeBitHead; i>snakeBitTail; i--){
-		switch (getDirection(i)){
+	uint16_t testHead = snakeBitHead;
+	uint16_t testTail = snakeBitTail;
+	while(testHead!=testTail-1){
+		switch (getDirection(testHead)){
 			case JS_DOWN:posSnakeBit.cord_Y--; break;
 			case JS_UP:posSnakeBit.cord_Y++; break;
 			case JS_LEFT:posSnakeBit.cord_X++; break;
 			case JS_RIGHT:posSnakeBit.cord_X--; break;
-			default:break;
+			default:draw_setPixel(0,0,COLOR_YELLOW);break;
+		}
+		if(testHead!=0){
+			testHead = (testHead-1)%1024;
+		}
+		else{
+			testHead = 1024;
 		}
 		draw_setPixel(posSnakeBit.cord_X,posSnakeBit.cord_Y,COLOR_GREEN);
 	}
@@ -267,15 +302,15 @@ void SNAKE(void) {
 		while(!js_getButton()){
 			drawScores();
 			checkDircetion();
-			delayMs(150);
+			delayMs(100);
 			snakeMove();
-			delayMs(150);
+			delayMs(100);
 		}
 		delayMs(500);
 		drawPauseMenu();
 		while(!js_getButton()){}
 		drawSnakeAfterMenu();
 		delayMs(1000);
-		
+		deathMessage();
 	}
 }
