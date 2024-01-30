@@ -43,12 +43,18 @@ Direction oldDirection = JS_RIGHT;
 Direction currentDirection = JS_RIGHT;
 
 Position pos_Food;
-uint16_t momScore=1111;
-uint16_t highScore=1351;
+uint16_t momScore=0;
+uint16_t highScore=0;
 
 /*  funktionen fuer Snake */
 
-// setze 
+void checkDircetion(){
+	oldDirection = currentDirection;
+	if(js_getDirection()!= JS_NEUTRAL){
+		currentDirection = js_getDirection();
+	}
+}
+
 void setDirection(uint16_t snakeBit, Direction direction){
 	uint8_t directionInBin=0;
 	switch(direction){
@@ -77,8 +83,9 @@ void drawSnake(){
 	pos_SnakeHead.cord_X=16;
 	pos_SnakeHead.cord_Y=16;
 	snakeBitHead =7;
-	for(uint8_t i =0; i<snakeBitHead; i++){
-		setDirection(i,JS_NEUTRAL);
+	for(uint8_t i =0; i<=snakeBitHead; i++){
+		setDirection(i,JS_RIGHT);
+		draw_setPixel(pos_SnakeHead.cord_X-i,pos_SnakeHead.cord_Y,COLOR_GREEN);
 	}
 	
 }
@@ -102,7 +109,7 @@ void resetGame(){
 	spawnFood();
 }
 
-void checkGameOver(){
+bool checkGameOver(){
 	Position posSnakeBit;
 	posSnakeBit.cord_X = pos_SnakeHead.cord_X;
 	posSnakeBit.cord_Y = pos_SnakeHead.cord_Y;
@@ -112,13 +119,13 @@ void checkGameOver(){
 			case JS_UP:posSnakeBit.cord_Y++; break;
 			case JS_LEFT:posSnakeBit.cord_X++; break;
 			case JS_RIGHT:posSnakeBit.cord_X--; break;
-			default:return;
+			default:return false;
 		}
 		if(posSnakeBit.cord_X == pos_SnakeHead.cord_X&&posSnakeBit.cord_Y == pos_SnakeHead.cord_Y){
-			resetGame();
-			return;
+			return true;
 		}
 	}
+	return false;
 	
 }
 
@@ -175,14 +182,34 @@ void snakeMove(){
 	pos_OldSnakeHead = pos_SnakeHead;
 	switch (currentDirection){
 		case JS_NEUTRAL: currentDirection = oldDirection; snakeMove();return;
-		case JS_DOWN:if(pos_SnakeHead.cord_Y==31){resetGame();return;}else{pos_SnakeHead.cord_Y++;} break;
-		case JS_UP:if(pos_SnakeHead.cord_Y==7){resetGame();return;}else{pos_SnakeHead.cord_Y--;} break;
-		case JS_LEFT:if(pos_SnakeHead.cord_X==0){resetGame();return;}else{pos_SnakeHead.cord_X--;} break;
-		case JS_RIGHT:if(pos_SnakeHead.cord_X==31){resetGame();return;}else{pos_SnakeHead.cord_X++;} break;
+		case JS_DOWN:if(pos_SnakeHead.cord_Y==31){resetGame();return;}
+			if(oldDirection==JS_UP){
+				currentDirection = oldDirection; snakeMove();return;
+			}
+			else{pos_SnakeHead.cord_Y++;} break;
+		case JS_UP:if(pos_SnakeHead.cord_Y==7){resetGame();return;}
+			if(oldDirection==JS_DOWN){
+				currentDirection = oldDirection; snakeMove();return;
+			}
+			else{pos_SnakeHead.cord_Y--;} break;
+		case JS_LEFT:if(pos_SnakeHead.cord_X==0){resetGame();return;}
+			if(oldDirection==JS_RIGHT){
+				currentDirection = oldDirection; snakeMove();return;
+			}
+			else{pos_SnakeHead.cord_X--;} break;
+		case JS_RIGHT:if(pos_SnakeHead.cord_X==31){resetGame();return;}
+			if(oldDirection==JS_LEFT){
+				currentDirection = oldDirection; snakeMove();return;
+			}
+			else{pos_SnakeHead.cord_X++;} break;
 	}
-	checkGameOver();
+	if(checkGameOver()){
+		resetGame();
+		return;
+	}
 	checkEatenFood();
 	drawSnakeBits();
+	
 }
 void drawScores(){
 	draw_number(momScore,false,1,1,COLOR_TURQUOISE,true,false);
@@ -239,16 +266,16 @@ void SNAKE(void) {
 	while(true){
 		while(!js_getButton()){
 			drawScores();
-			delayMs(300);
-			oldDirection = currentDirection;
-			currentDirection = js_getDirection();
+			checkDircetion();
+			delayMs(150);
 			snakeMove();
+			delayMs(150);
 		}
-		delayMs(300);
+		delayMs(500);
 		drawPauseMenu();
 		while(!js_getButton()){}
 		drawSnakeAfterMenu();
-		delayMs(300);
+		delayMs(1000);
 		
 	}
 }
