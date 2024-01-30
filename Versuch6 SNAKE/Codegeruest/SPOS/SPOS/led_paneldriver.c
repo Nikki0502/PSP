@@ -7,6 +7,7 @@
 
 #include "defines.h"
 #include "util.h"
+#include "joystick.h"
 
 #include <avr/interrupt.h>
 #include <stdbool.h>
@@ -14,6 +15,7 @@
 
 
 uint8_t frambuffer[2][16][32];
+Direction currentDirection;
 
 
 //! \brief Enable compare match interrupts for Timer 1
@@ -99,69 +101,6 @@ LEDs ausgegeben werden
 //! \brief ISR to refresh LED panel, trigger 1 compare match interrupts
 ISR(TIMER1_COMPA_vect) {
 	panel_stopTimer();
-	//fuck this code
-	/*
-	while(momDoppelzeile<16){
-		panel_setAddress(momDoppelzeile);
-		panel_setOutput(momEbene,momDoppelzeile);
-		panel_latchEnable();
-		panel_latchDisable();
-		panel_outputEnable();
-		panel_outputDisable();
-		momEbene++;
-		momDoppelzeile ++;
-	}
-	momDoppelzeile = 0;
-	momEbene++;
-	while(momDoppelzeile<16){
-		panel_setAddress(momDoppelzeile);
-		panel_setOutput(momEbene,momDoppelzeile);
-		panel_latchEnable();
-		panel_latchDisable();
-		panel_outputEnable();
-		panel_outputDisable();
-		momDoppelzeile ++;
-	}
-	momEbene--;
-	momDoppelzeile = 0;
-	while(momDoppelzeile<16){
-		panel_setAddress(momDoppelzeile);
-		panel_setOutput(momEbene,momDoppelzeile);
-		panel_latchEnable();
-		panel_latchDisable();
-		panel_outputEnable();
-		panel_outputDisable();
-		momDoppelzeile ++;
-	}
-	momDoppelzeile = 0;
-	momEbene = 0;
-	*/
-	/*
-	panel_setAddress(momDoppelzeile);
-	panel_setOutput(momEbene,momDoppelzeile);
-	panel_latchEnable();
-	panel_latchDisable();
-	panel_outputEnable();
-	panel_outputDisable();
-	momEbene++;
-	panel_setAddress(momDoppelzeile);
-	panel_setOutput(momEbene,momDoppelzeile);
-	panel_latchEnable();
-	panel_latchDisable();
-	panel_outputEnable();
-	panel_outputDisable();
-	momEbene--;
-	panel_setAddress(momDoppelzeile);
-	panel_setOutput(momEbene,momDoppelzeile);
-	panel_latchEnable();
-	panel_latchDisable();
-	panel_outputEnable();
-	panel_outputDisable();
-	momDoppelzeile ++;
-	if(momDoppelzeile==16){
-		momDoppelzeile = 0;
-	}
-	*/
 	panel_setAddress(momDoppelzeile);
 	panel_setOutput(momEbene,momDoppelzeile);
 	panel_latchEnable();
