@@ -100,13 +100,13 @@ LEDs ausgegeben werden
 */
 //! \brief ISR to refresh LED panel, trigger 1 compare match interrupts
 ISR(TIMER1_COMPA_vect) {
-	panel_stopTimer();
-	panel_setAddress(momDoppelzeile);
+	//panel_stopTimer();
 	panel_setOutput(momEbene,momDoppelzeile);
+	panel_outputDisable();
+	panel_setAddress(momDoppelzeile);
 	panel_latchEnable();
 	panel_latchDisable();
 	panel_outputEnable();
-	panel_outputDisable();
 	momDoppelzeile ++;
 	if(momDoppelzeile==16){
 		momDoppelzeile = 0;
@@ -121,5 +121,5 @@ ISR(TIMER1_COMPA_vect) {
 			momEbene++;
 		}
 	}
-	panel_startTimer();
+	//panel_startTimer();
 }

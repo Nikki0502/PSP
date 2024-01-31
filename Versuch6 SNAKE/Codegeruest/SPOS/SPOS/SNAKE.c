@@ -261,7 +261,7 @@ void drawSnakeAfterMenu(){
 	draw_setPixel(pos_SnakeHead.cord_X,pos_SnakeHead.cord_Y,COLOR_GREEN);
 	uint16_t testHead = snakeBitHead;
 	uint16_t testTail = snakeBitTail;
-	while(testHead!=testTail-1){
+	while(testHead!=testTail){
 		switch (getDirection(testHead)){
 			case JS_DOWN:posSnakeBit.cord_Y--; break;
 			case JS_UP:posSnakeBit.cord_Y++; break;
@@ -311,6 +311,5 @@ void SNAKE(void) {
 		while(!js_getButton()){}
 		drawSnakeAfterMenu();
 		delayMs(1000);
-		deathMessage();
 	}
 }
